@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="pl">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ResellTracker</title>
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💰</text></svg>">
+  <link rel="manifest" href="manifest.json">
+
+  <!-- React 18 -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- Babel -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Tailwind Config -->
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              bg: '#0a0a0a',
+              card: '#171717',
+              border: '#262626',
+              text: '#ffffff',
+              muted: '#a3a3a3',
+              hover: '#1f1f1f'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #0a0a0a;
+      color: #ffffff;
+      color-scheme: dark;
+    }
+
+    /* Hide scrollbar */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    /* Input adjustments for dark mode */
+    input[type="date"]::-webkit-calendar-picker-indicator {
+      cursor: pointer;
+      filter: invert(1);
+      opacity: 0.6;
+      transition: 0.2s;
+    }
+
+    input[type="date"]::-webkit-calendar-picker-indicator:hover {
+      opacity: 1;
+    }
+
+    select option {
+      background-color: #171717;
+      color: #ffffff;
+    }
+  </style>
+</head>
+
+<body class="bg-brand-bg text-brand-text">
+  <div id="root"></div>
+
+  <!-- PWA Setup -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').then(registration => {
+          console.log('PWA ServiceWorker registered');
+        }).catch(err => {
+          console.log('PWA ServiceWorker registration failed: ', err);
+        });
+      });
+    }
+  </script>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef } = React;
+
+    function App() {
+      // LocalStorage init with Data Migration for v4
+      const [deliveries, setDeliveries] = useState(() => {
+        const saved = localStorage.getItem('sneaker_deliveries_v4');
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            return parsed.map(d => ({
+              ...d,
+              purchaseDate: d.purchaseDate || d.createdAt?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+            }));
+          } catch (e) { }
+        }
+
+        // Migrate from v3
+        const v3Saved = localStorage.getItem('sneaker_deliveries_v3');
+        if (v3Saved) {
+          try {
+            const parsed = JSON.parse(v3Saved);
+            return parsed.map(d => ({
+              ...d,
+              createdAt: d.createdAt || new Date().toISOString(),
+              purchaseDate: d.purchaseDate || d.createdAt?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+            }));
+          } catch (e) { }
+        }
+
+        // Migrate from v2
+        const v2Saved = localStorage.getItem('sneaker_deliveries_v2');
+        if (v2Saved) {
+          try {
+            const parsed = JSON.parse(v2Saved);
+            return parsed.map(d => ({
+              ...d,
+              createdAt: new Date().toISOString(),
+              purchaseDate: new Date().toISOString().slice(0, 10),
+              items: d.items.map(i => {
+                let cond = i.condition || 'Nowe z metką';
+                if (cond === 'Nowe') cond = 'Nowe z metką';
+                if (cond === 'Jak nowe') cond = 'Bardzo dobry';
+                let stat = i.status || 'In stock';
+                if (stat === 'In Stock') stat = 'In stock';
+                return { ...i, condition: cond, status: stat, notes: i.notes || '' };
+              })
+            }));
+          } catch (e) { }
+        }
+        return [];
+      });
+
+      const [globalMonthFilter, setGlobalMonthFilter] = useState(() => {
+        return localStorage.getItem('sneaker_global_month') || 'All';
+      });
+
+      const [globalBoxSort, setGlobalBoxSort] = useState(() => {
+        return localStorage.getItem('sneaker_global_box_sort') || 'desc';
+      });
+
+      const [saveStatus, setSaveStatus] = useState('');
+      const fileInputRef = useRef(null);
+      const menuRef = useRef(null);
+      const popoversRef = useRef(null);
+
+      // UI States
+      const [isModalOpen, setIsModalOpen] = useState(false);
+      const [isMenuOpen, setIsMenuOpen] = useState(false);
+      const [activePopoverDeliveryId, setActivePopoverDeliveryId] = useState(null);
+      const [newDelivery, setNewDelivery] = useState({ name: '', boxCost: '', pairsCount: '', purchaseDate: new Date().toISOString().slice(0, 10) });
+      const [filters, setFilters] = useState({});
+
+      // Close menus on outside click
+      useEffect(() => {
+        const handleClickOutside = (event) => {
+          if (menuRef.current && !menuRef.current.contains(event.target)) {
+            setIsMenuOpen(false);
+          }
+          if (popoversRef.current && !popoversRef.current.contains(event.target)) {
+            setActivePopoverDeliveryId(null);
+          }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+      }, []);
+
+      // Save Data to v4
+      useEffect(() => {
+        localStorage.setItem('sneaker_deliveries_v4', JSON.stringify(deliveries));
+
+        setSaveStatus('Zapisano');
+        const timer = setTimeout(() => setSaveStatus(''), 2000);
+
+        if (window.lucide) {
+          setTimeout(() => window.lucide.createIcons(), 0);
+        }
+        return () => clearTimeout(timer);
+      }, [deliveries, filters, activePopoverDeliveryId, globalMonthFilter, globalBoxSort]);
+
+      // Save Global Filters to LocalStorage
+      useEffect(() => {
+        localStorage.setItem('sneaker_global_month', globalMonthFilter);
+      }, [globalMonthFilter]);
+
+      useEffect(() => {
+        localStorage.setItem('sneaker_global_box_sort', globalBoxSort);
+      }, [globalBoxSort]);
+
+      // Dynamic List of Available Months
+      const availableMonths = useMemo(() => {
+        const monthsSet = new Set();
+        const polishMonths = ['Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec', 'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'];
+
+        deliveries.forEach(d => {
+          if (d.purchaseDate) {
+            const date = new Date(d.purchaseDate);
+            if (!isNaN(date)) monthsSet.add(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`);
+          }
+          d.items.forEach(i => {
+            if (i.saleDate) {
+              const date = new Date(i.saleDate);
+              if (!isNaN(date)) monthsSet.add(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`);
+            }
+          });
+        });
+
+        return Array.from(monthsSet).sort().reverse().map(val => {
+          const [year, month] = val.split('-');
+          return {
+            value: val,
+            label: `${polishMonths[parseInt(month) - 1]} ${year}`
+          };
+        });
+      }, [deliveries]);
+
+      // Global Metrics (Filtered by Global Time Filter)
+      const metrics = useMemo(() => {
+        let totalRevenue = 0;
+        let totalProfit = 0;
+        let itemsSold = 0;
+        let totalBoxCost = 0;
+
+        let filterYear = null, filterMonth = null;
+        if (globalMonthFilter !== 'All') {
+          const [y, m] = globalMonthFilter.split('-');
+          filterYear = parseInt(y);
+          filterMonth = parseInt(m) - 1;
+        }
+
+        deliveries.forEach(delivery => {
+          // Check Delivery PurchaseDate for Box Cost aggregation
+          let boxDate = new Date();
+          if (delivery.purchaseDate) {
+            boxDate = new Date(delivery.purchaseDate);
+          } else if (delivery.createdAt) {
+            boxDate = new Date(delivery.createdAt);
+          }
+
+          let countBoxCost = true;
+          if (globalMonthFilter !== 'All') {
+            if (boxDate.getFullYear() !== filterYear || boxDate.getMonth() !== filterMonth) {
+              countBoxCost = false;
+            }
+          }
+
+          if (countBoxCost) {
+            totalBoxCost += (Number(delivery.boxCost) || 0);
+          }
+
+          const unitCost = Number(delivery.pairsCount) > 0 ? (Number(delivery.boxCost) || 0) / Number(delivery.pairsCount) : 0;
+
+          delivery.items.forEach(item => {
+            if (item.status === 'Sold' || item.status === 'Shipped') {
+              const sell = Number(item.sellPrice) || 0;
+              const profit = sell - unitCost;
+
+              let countItem = true;
+              if (globalMonthFilter !== 'All') {
+                if (!item.saleDate) {
+                  countItem = false;
+                } else {
+                  const sDate = new Date(item.saleDate);
+                  if (sDate.getFullYear() !== filterYear || sDate.getMonth() !== filterMonth) {
+                    countItem = false;
+                  }
+                }
+              }
+
+              if (countItem) {
+                totalRevenue += sell;
+                totalProfit += profit;
+                itemsSold += 1;
+              }
+            }
+          });
+        });
+
+        return { totalRevenue, totalProfit, itemsSold, totalBoxCost };
+      }, [deliveries, globalMonthFilter]);
+
+      // Sorted Deliveries
+      const sortedDeliveries = useMemo(() => {
+        return [...deliveries].sort((a, b) => {
+          const dateA = new Date(a.purchaseDate || a.createdAt || 0).getTime();
+          const dateB = new Date(b.purchaseDate || b.createdAt || 0).getTime();
+          if (globalBoxSort === 'desc') {
+            return dateB - dateA;
+          } else {
+            return dateA - dateB;
+          }
+        });
+      }, [deliveries, globalBoxSort]);
+
+      // Handlers
+      const openAddDeliveryModal = () => {
+        setNewDelivery({ name: '', boxCost: '', pairsCount: '', purchaseDate: new Date().toISOString().slice(0, 10) });
+        setIsModalOpen(true);
+      };
+
+      const handleAddDelivery = (e) => {
+        e.preventDefault();
+        if (!newDelivery.name || !newDelivery.purchaseDate) return;
+
+        setDeliveries([{
+          id: Date.now().toString(),
+          name: newDelivery.name,
+          boxCost: Number(newDelivery.boxCost) || 0,
+          pairsCount: Number(newDelivery.pairsCount) || 1,
+          createdAt: new Date().toISOString(),
+          purchaseDate: newDelivery.purchaseDate,
+          items: []
+        }, ...deliveries]);
+
+        setIsModalOpen(false);
+      };
+
+      const deleteDelivery = (deliveryId) => {
+        if (confirm('Czy na pewno chcesz usunąć tę dostawę?')) {
+          setDeliveries(deliveries.filter(d => d.id !== deliveryId));
+          resetFilters(deliveryId);
+        }
+      };
+
+      const addItem = (deliveryId) => {
+        const updatedDeliveries = deliveries.map(delivery => {
+          if (delivery.id === deliveryId) {
+            return {
+              ...delivery,
+              items: [...delivery.items, {
+                id: Date.now().toString(),
+                name: '',
+                size: '',
+                condition: 'Nowe z metką',
+                sellPrice: '',
+                saleDate: '',
+                status: 'In stock',
+                notes: ''
+              }]
+            };
+          }
+          return delivery;
+        });
+        setDeliveries(updatedDeliveries);
+      };
+
+      const updateItem = (deliveryId, itemId, field, value) => {
+        const updatedDeliveries = deliveries.map(delivery => {
+          if (delivery.id === deliveryId) {
+            return {
+              ...delivery,
+              items: delivery.items.map(item => {
+                if (item.id === itemId) {
+                  return { ...item, [field]: value };
+                }
+                return item;
+              })
+            };
+          }
+          return delivery;
+        });
+        setDeliveries(updatedDeliveries);
+      };
+
+      const deleteItem = (deliveryId, itemId) => {
+        const updatedDeliveries = deliveries.map(delivery => {
+          if (delivery.id === deliveryId) {
+            return {
+              ...delivery,
+              items: delivery.items.filter(item => item.id !== itemId)
+            };
+          }
+          return delivery;
+        });
+        setDeliveries(updatedDeliveries);
+      };
+
+      // Filter Handlers
+      const handleFilterChange = (deliveryId, key, value) => {
+        setFilters(prev => ({
+          ...prev,
+          [deliveryId]: {
+            ...(prev[deliveryId] || { status: 'All', minPrice: '', dateFrom: '', dateTo: '', sort: 'none' }),
+            [key]: value
+          }
+        }));
+      };
+
+      const resetFilters = (deliveryId) => {
+        setFilters(prev => {
+          const next = { ...prev };
+          delete next[deliveryId];
+          return next;
+        });
+        setActivePopoverDeliveryId(null);
+      };
+
+      // Export/Import
+      const exportData = () => {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(deliveries, null, 2));
+        const dlAnchorElem = document.createElement('a');
+        dlAnchorElem.setAttribute("href", dataStr);
+        const date = new Date().toISOString().replace(/:/g, '-').slice(0, 19);
+        dlAnchorElem.setAttribute("download", `resell_backup_${date}.json`);
+        document.body.appendChild(dlAnchorElem);
+        dlAnchorElem.click();
+        document.body.removeChild(dlAnchorElem);
+        setIsMenuOpen(false);
+      };
+
+      const handleFileChange = (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const json = JSON.parse(e.target.result);
+            if (!Array.isArray(json)) throw new Error("Invalid format");
+            if (confirm('Uwaga: To nadpisze wszystkie obecne dane! Czy na pewno chcesz kontynuować?')) {
+              setDeliveries(json);
+              setFilters({}); // Reset all filters on import
+            }
+          } catch (err) {
+            alert('Błąd odczytu pliku. Upewnij się, że to poprawny plik kopii zapasowej JSON.');
+          }
+          event.target.value = '';
+          setIsMenuOpen(false);
+        };
+        reader.readAsText(file);
+      };
+
+      const exportCSV = (delivery, filteredItems) => {
+        const unitCost = Number(delivery.pairsCount) > 0 ? (Number(delivery.boxCost) || 0) / Number(delivery.pairsCount) : 0;
+        const headers = ['Produkt', 'Rozmiar', 'Stan', 'Status', 'Cena Sprzedazy (PLN)', 'Koszt Jednostkowy (PLN)', 'Zysk (PLN)', 'Data Sprzedazy', 'Uwagi'];
+
+        const rows = filteredItems.map(item => {
+          const sell = Number(item.sellPrice) || 0;
+          const profit = (item.status === 'Sold' || item.status === 'Shipped') ? (sell - unitCost) : 0;
+
+          return [
+            `"${(item.name || '').replace(/"/g, '""')}"`,
+            `"${(item.size || '').replace(/"/g, '""')}"`,
+            `"${item.condition || ''}"`,
+            `"${item.status || ''}"`,
+            sell,
+            unitCost.toFixed(2),
+            profit.toFixed(2),
+            `"${item.saleDate || ''}"`,
+            `"${(item.notes || '').replace(/"/g, '""')}"`
+          ].join(',');
+        });
+
+        const csvContent = "data:text/csv;charset=utf-8,%EF%BB%BF" + encodeURIComponent([headers.join(','), ...rows].join('\n'));
+        const dlAnchorElem = document.createElement('a');
+        dlAnchorElem.setAttribute("href", csvContent);
+        const date = new Date().toISOString().slice(0, 10);
+        dlAnchorElem.setAttribute("download", `delivery_${delivery.name.replace(/[^a-z0-9]/gi, '_')}_${date}.csv`);
+        document.body.appendChild(dlAnchorElem);
+        dlAnchorElem.click();
+        document.body.removeChild(dlAnchorElem);
+      };
+
+      const formatCurrency = (val) => {
+        return new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN' }).format(val || 0);
+      };
+
+      const getConditionClasses = (cond) => {
+        switch (cond) {
+          case 'Nowe z metką':
+          case 'Nowe bez metki': return 'text-[#00e676] bg-[#004d00]/30 border-[#00e676]/30';
+          case 'Bardzo dobry': return 'text-[#0a0a0a] bg-[#00E676] border-[#00E676] font-semibold';
+          case 'Dobry': return 'text-blue-400 bg-blue-500/20 border-blue-500/30';
+          case 'Zadowalający': return 'text-amber-500 bg-amber-700/20 border-amber-700/30';
+          case 'Uszkodzone': return 'text-red-400 bg-red-500/20 border-red-500/30';
+          default: return 'text-white bg-transparent border-brand-border';
+        }
+      };
+
+      const getStatusClasses = (status) => {
+        switch (status) {
+          case 'In stock': return 'text-blue-400 bg-blue-400/10 border-blue-400/20';
+          case 'Posted': return 'text-purple-400 bg-purple-400/10 border-purple-400/20';
+          case 'Shipped': return 'text-amber-400 bg-amber-400/10 border-amber-400/20';
+          case 'Sold': return 'text-[#00E676] bg-[#00E676]/10 border-[#00E676]/20';
+          default: return 'text-white bg-transparent border-brand-border';
+        }
+      };
+
+      return (
+        <div className="min-h-screen pb-24 font-sans selection:bg-white/20">
+
+          {/* Add Delivery Modal */}
+          {isModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-opacity">
+              <div className="bg-brand-card border border-brand-border rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
+                <div className="px-6 py-4 border-b border-brand-border flex justify-between items-center">
+                  <h3 className="text-lg font-semibold text-white">Dodaj nową dostawę</h3>
+                  <button onClick={() => setIsModalOpen(false)} className="text-brand-muted hover:text-white transition-colors">
+                    <i data-lucide="x" className="w-5 h-5"></i>
+                  </button>
+                </div>
+                <form onSubmit={handleAddDelivery} className="p-6 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-brand-muted mb-1.5">Nazwa dostawy</label>
+                    <input
+                      type="text"
+                      required
+                      autoFocus
+                      value={newDelivery.name}
+                      onChange={e => setNewDelivery({ ...newDelivery, name: e.target.value })}
+                      className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-white placeholder-brand-border focus:ring-1 focus:ring-white focus:border-white outline-none transition-all"
+                      placeholder="np. Nike SNKRS - Luty"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-brand-muted mb-1.5">Data zakupu boxa</label>
+                    <input
+                      type="date"
+                      required
+                      value={newDelivery.purchaseDate}
+                      onChange={e => setNewDelivery({ ...newDelivery, purchaseDate: e.target.value })}
+                      className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-white placeholder-brand-border focus:ring-1 focus:ring-white focus:border-white outline-none transition-all cursor-pointer"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-brand-muted mb-1.5">Kwota za karton (PLN)</label>
+                      <input
+                        type="number"
+                        required
+                        value={newDelivery.boxCost}
+                        onChange={e => setNewDelivery({ ...newDelivery, boxCost: e.target.value })}
+                        className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-white placeholder-brand-border focus:ring-1 focus:ring-white focus:border-white outline-none transition-all"
+                        placeholder="0"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-brand-muted mb-1.5">Liczba par w kartonie</label>
+                      <input
+                        type="number"
+                        required
+                        min="1"
+                        value={newDelivery.pairsCount}
+                        onChange={e => setNewDelivery({ ...newDelivery, pairsCount: e.target.value })}
+                        className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-white placeholder-brand-border focus:ring-1 focus:ring-white focus:border-white outline-none transition-all"
+                        placeholder="1"
+                      />
+                    </div>
+                  </div>
+                  {Number(newDelivery.pairsCount) > 0 && Number(newDelivery.boxCost) > 0 && (
+                    <div className="pt-2">
+                      <p className="text-xs text-brand-muted">
+                        Kalkulowany koszt za 1 parę: <span className="text-white font-medium">{formatCurrency(newDelivery.boxCost / newDelivery.pairsCount)}</span>
+                      </p>
+                    </div>
+                  )}
+                  <div className="pt-4 flex justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setIsModalOpen(false)}
+                      className="px-4 py-2 text-sm font-medium text-brand-muted hover:text-white transition-colors"
+                    >
+                      Anuluj
+                    </button>
+                    <button
+                      type="submit"
+                      className="bg-white text-black hover:bg-gray-200 px-4 py-2 rounded-lg font-medium text-sm transition-colors shadow-[0_0_15px_rgba(255,255,255,0.1)]"
+                    >
+                      Zapisz dostawę
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Header */}
+          <header className="bg-brand-bg/80 backdrop-blur-md border-b border-brand-border sticky top-0 z-40">
+            <div className="max-w-[90rem] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-brand-card border border-brand-border rounded flex items-center justify-center shadow-inner">
+                    <i data-lucide="package" className="text-brand-muted w-4 h-4"></i>
+                  </div>
+                  <h1 className="font-semibold text-lg tracking-tight hidden sm:block mr-2">ResellTracker</h1>
+                </div>
+
+                <div className="h-6 w-px bg-brand-border mx-1"></div>
+
+                {/* Global Time Filter */}
+                <select
+                  value={globalMonthFilter}
+                  onChange={(e) => setGlobalMonthFilter(e.target.value)}
+                  className="bg-brand-bg border border-brand-border text-white text-sm rounded-lg py-1.5 pl-3 pr-8 focus:ring-1 focus:ring-brand-border outline-none transition-colors cursor-pointer font-medium"
+                >
+                  <option value="All">Wszystkie dane</option>
+                  {availableMonths.map(m => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+
+                {/* Save Status Pulse */}
+                <span className={`hidden md:flex text-xs font-medium text-[#00E676] bg-[#00E676]/10 border border-[#00E676]/20 px-2 py-0.5 rounded-full transition-opacity duration-300 items-center ${saveStatus ? 'opacity-100' : 'opacity-0'}`}>
+                  <i data-lucide="check" className="w-3 h-3 mr-1"></i>
+                  {saveStatus}
+                </span>
+              </div>
+
+              {/* Management Actions - Kebab Menu */}
+              <div className="relative" ref={menuRef}>
+                <button
+                  onClick={() => setIsMenuOpen(!isMenuOpen)}
+                  className="p-2 rounded-lg text-brand-muted hover:text-white hover:bg-brand-hover transition-colors"
+                >
+                  <i data-lucide="more-vertical" className="w-5 h-5"></i>
+                </button>
+
+                {isMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-56 rounded-xl bg-brand-card border border-brand-border shadow-2xl py-1 z-50">
+                    <input
+                      type="file"
+                      accept=".json"
+                      ref={fileInputRef}
+                      style={{ display: 'none' }}
+                      onChange={handleFileChange}
+                    />
+                    <button
+                      onClick={() => fileInputRef.current.click()}
+                      className="w-full text-left px-4 py-2.5 text-sm text-brand-text hover:bg-brand-hover flex items-center gap-2 transition-colors"
+                    >
+                      <i data-lucide="upload" className="w-4 h-4 text-brand-muted"></i>
+                      Importuj z pliku
+                    </button>
+                    <button
+                      onClick={exportData}
+                      className="w-full text-left px-4 py-2.5 text-sm text-brand-text hover:bg-brand-hover flex items-center gap-2 transition-colors"
+                    >
+                      <i data-lucide="download" className="w-4 h-4 text-brand-muted"></i>
+                      Eksportuj kopię (JSON)
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </header>
+
+          <main className="max-w-[90rem] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-10" ref={popoversRef}>
+
+            {/* Global Dashboard */}
+            <section>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+                {/* Metric Card 1 */}
+                <div className="bg-brand-card rounded-xl p-6 border border-brand-border flex flex-col justify-between relative overflow-hidden group">
+                  <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  <div className="text-sm font-medium text-brand-muted mb-2 flex justify-between items-center relative z-10">
+                    Łączny przychód
+                    <div className="w-8 h-8 bg-brand-bg rounded-lg border border-brand-border flex items-center justify-center">
+                      <i data-lucide="wallet" className="w-4 h-4 text-white"></i>
+                    </div>
+                  </div>
+                  <div className="text-3xl font-semibold tracking-tight text-white mt-2 relative z-10">
+                    {formatCurrency(metrics.totalRevenue)}
+                  </div>
+                </div>
+
+                {/* Metric Card 2 */}
+                <div className="bg-brand-card rounded-xl p-6 border border-brand-border flex flex-col justify-between relative overflow-hidden group">
+                  <div className="absolute inset-0 bg-gradient-to-br from-[#00E676]/[0.05] to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  <div className="text-sm font-medium text-brand-muted mb-2 flex justify-between items-center relative z-10">
+                    Łączny zysk
+                    <div className="w-8 h-8 bg-brand-bg rounded-lg border border-brand-border flex items-center justify-center">
+                      <i data-lucide="trending-up" className="w-4 h-4 text-[#00E676]"></i>
+                    </div>
+                  </div>
+                  <div className={`text-3xl font-semibold tracking-tight mt-2 relative z-10 ${metrics.totalProfit >= 0 ? 'text-[#00E676]' : 'text-red-500'}`}>
+                    {metrics.totalProfit > 0 ? '+' : ''}{formatCurrency(metrics.totalProfit)}
+                  </div>
+                </div>
+
+                {/* Metric Card 4 */}
+                <div className="bg-brand-card rounded-xl p-6 border border-brand-border flex flex-col justify-between relative overflow-hidden group">
+                  <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  <div className="text-sm font-medium text-brand-muted mb-2 flex justify-between items-center relative z-10">
+                    Liczba sprzedanych par
+                    <div className="w-8 h-8 bg-brand-bg rounded-lg border border-brand-border flex items-center justify-center">
+                      <i data-lucide="shopping-bag" className="w-4 h-4 text-white"></i>
+                    </div>
+                  </div>
+                  <div className="text-3xl font-semibold tracking-tight text-white mt-2 relative z-10">
+                    {metrics.itemsSold}
+                  </div>
+                </div>
+
+                {/* Metric Card 5 */}
+                <div className="bg-brand-card rounded-xl p-6 border border-brand-border flex flex-col justify-between relative overflow-hidden group">
+                  <div className="absolute inset-0 bg-gradient-to-br from-blue-500/[0.05] to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  <div className="text-sm font-medium text-brand-muted mb-2 flex justify-between items-center relative z-10">
+                    Suma wydana na boxy
+                    <div className="w-8 h-8 bg-brand-bg rounded-lg border border-brand-border flex items-center justify-center">
+                      <i data-lucide="package" className="w-4 h-4 text-blue-400"></i>
+                    </div>
+                  </div>
+                  <div className="text-3xl font-semibold tracking-tight text-white mt-2 relative z-10">
+                    {formatCurrency(metrics.totalBoxCost)}
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* Deliveries */}
+            <section className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-brand-border pb-4 gap-4">
+                <div className="flex items-center gap-6">
+                  <h2 className="text-xl font-semibold flex items-center gap-2 text-white">
+                    Dostawy
+                  </h2>
+                </div>
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                  <button
+                    onClick={() => setGlobalBoxSort(globalBoxSort === 'desc' ? 'asc' : 'desc')}
+                    className="bg-brand-bg border border-brand-border text-brand-muted hover:text-white hover:bg-brand-hover px-3 py-2 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 active:scale-95 flex-1 sm:flex-none"
+                    title="Zmień sortowanie"
+                  >
+                    <span className="text-xs uppercase tracking-wider">Sortuj:</span>
+                    <span className="text-white flex items-center gap-1.5">
+                      {globalBoxSort === 'desc' ? (
+                        <><i data-lucide="arrow-down" className="w-3.5 h-3.5"></i> Najnowsze</>
+                      ) : (
+                        <><i data-lucide="arrow-up" className="w-3.5 h-3.5"></i> Najstarsze</>
+                      )}
+                    </span>
+                  </button>
+                  <button
+                    onClick={openAddDeliveryModal}
+                    className="bg-white text-black hover:bg-gray-200 active:scale-95 px-4 py-2 rounded-lg font-medium text-sm transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(255,255,255,0.1)] flex-1 sm:flex-none justify-center"
+                  >
+                    <i data-lucide="plus" className="w-4 h-4"></i>
+                    Dodaj dostawę
+                  </button>
+                </div>
+              </div>
+
+              {sortedDeliveries.length === 0 && (
+                <div className="text-center py-24 bg-brand-card border border-brand-border border-dashed rounded-xl">
+                  <div className="w-16 h-16 bg-brand-bg rounded-full flex items-center justify-center mx-auto mb-4 border border-brand-border">
+                    <i data-lucide="package-open" className="w-8 h-8 text-brand-muted"></i>
+                  </div>
+                  <h3 className="text-white font-medium text-lg">Brak dostaw</h3>
+                  <p className="text-brand-muted text-sm mt-2 mb-6 max-w-sm mx-auto">Nie masz jeszcze żadnych dodanych dostaw. Dodaj swoją pierwszą dostawę, aby rozpocząć.</p>
+                  <button onClick={openAddDeliveryModal} className="text-sm font-medium text-black bg-white hover:bg-gray-200 px-5 py-2.5 rounded-lg transition-colors shadow-[0_0_15px_rgba(255,255,255,0.1)]">
+                    Dodaj pierwszą dostawę
+                  </button>
+                </div>
+              )}
+
+              <div className="space-y-8">
+                {sortedDeliveries.map(delivery => {
+                  const unitCost = Number(delivery.pairsCount) > 0 ? (Number(delivery.boxCost) || 0) / Number(delivery.pairsCount) : 0;
+
+                  // Setup filters for this delivery
+                  const f = filters[delivery.id] || { status: 'All', minPrice: '', dateFrom: '', dateTo: '', sort: 'none' };
+                  const hasActiveFilters = f.status !== 'All' || f.minPrice !== '' || f.dateFrom !== '' || f.dateTo !== '' || f.sort !== 'none';
+
+                  // Filter Items
+                  let filteredItems = delivery.items.filter(item => {
+                    if (f.status && f.status !== 'All' && item.status !== f.status) return false;
+                    if (f.minPrice && (Number(item.sellPrice) || 0) < Number(f.minPrice)) return false;
+                    if (f.dateFrom && (!item.saleDate || item.saleDate < f.dateFrom)) return false;
+                    if (f.dateTo && (!item.saleDate || item.saleDate > f.dateTo)) return false;
+                    return true;
+                  });
+
+                  // Sort Items
+                  if (f.sort && f.sort !== 'none') {
+                    filteredItems.sort((a, b) => {
+                      if (f.sort === 'price-desc') {
+                        return (Number(b.sellPrice) || 0) - (Number(a.sellPrice) || 0);
+                      }
+                      if (f.sort === 'price-asc') {
+                        return (Number(a.sellPrice) || 0) - (Number(b.sellPrice) || 0);
+                      }
+                      if (f.sort === 'date-desc') {
+                        const dateA = a.saleDate ? new Date(a.saleDate).getTime() : 0;
+                        const dateB = b.saleDate ? new Date(b.saleDate).getTime() : 0;
+                        return dateB - dateA;
+                      }
+                      if (f.sort === 'profit-desc') {
+                        const pA = (a.status === 'Sold' || a.status === 'Shipped') ? ((Number(a.sellPrice) || 0) - unitCost) : -999999;
+                        const pB = (b.status === 'Sold' || b.status === 'Shipped') ? ((Number(b.sellPrice) || 0) - unitCost) : -999999;
+                        return pB - pA;
+                      }
+                      return 0;
+                    });
+                  }
+
+                  // Calculate Sub-totals dynamically on filtered items
+                  let dRev = 0;
+                  let itemsSoldInDelivery = 0;
+
+                  filteredItems.forEach(item => {
+                    if (item.status === 'Sold' || item.status === 'Shipped') {
+                      dRev += (Number(item.sellPrice) || 0);
+                      itemsSoldInDelivery++;
+                    }
+                  });
+
+                  const dProf = dRev - (itemsSoldInDelivery * unitCost);
+
+                  return (
+                    <div key={delivery.id} className="bg-brand-card rounded-xl border border-brand-border overflow-visible">
+                      {/* Delivery Header */}
+                      <div className="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-brand-border">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 rounded-lg bg-brand-hover border border-brand-border flex items-center justify-center">
+                            <i data-lucide="package" className="w-5 h-5 text-brand-text"></i>
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-3">
+                              <h3 className="font-semibold text-white text-lg">{delivery.name}</h3>
+                              {delivery.purchaseDate && (
+                                <span className="text-xs bg-brand-bg border border-brand-border text-brand-muted px-2 py-0.5 rounded-full flex items-center gap-1">
+                                  <i data-lucide="calendar" className="w-3 h-3"></i>
+                                  {delivery.purchaseDate}
+                                </span>
+                              )}
+                              <span className="text-xs bg-brand-hover border border-brand-border text-brand-muted px-2 py-0.5 rounded-full">
+                                {filteredItems.length} par {hasActiveFilters && '(filtrowane)'}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap gap-x-5 gap-y-1 mt-1.5 text-sm">
+                              <span className="text-brand-muted">Koszt boxa: <span className="font-medium text-white">{formatCurrency(delivery.boxCost)}</span></span>
+                              <span className="text-brand-muted">Koszt / parę: <span className="font-medium text-white">{formatCurrency(unitCost)}</span></span>
+                              <span className="text-brand-muted ml-1 border-l border-brand-border pl-4">Przychód: <span className="font-medium text-white">{formatCurrency(dRev)}</span></span>
+                              <span className="text-brand-muted">Zysk: <span className={`font-medium ${dProf >= 0 ? 'text-[#00E676]' : 'text-red-500'}`}>{dProf > 0 ? '+' : ''}{formatCurrency(dProf)}</span></span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+
+                          {/* Filter/Sort Popover */}
+                          <div className="relative">
+                            <button
+                              onClick={() => setActivePopoverDeliveryId(activePopoverDeliveryId === delivery.id ? null : delivery.id)}
+                              className={`bg-brand-bg border text-brand-muted hover:text-white hover:bg-brand-hover px-3 py-1.5 rounded-md font-medium text-sm transition-colors flex items-center gap-1.5 active:scale-95 ${hasActiveFilters ? 'border-blue-500/50 text-blue-400 bg-blue-500/5 shadow-[0_0_10px_rgba(59,130,246,0.1)]' : 'border-brand-border'}`}
+                            >
+                              <i data-lucide="filter" className="w-4 h-4"></i>
+                              <span className="hidden lg:inline">Filtruj / Sortuj</span>
+                              {hasActiveFilters && <span className="w-2 h-2 rounded-full bg-blue-500 ml-1"></span>}
+                            </button>
+
+                            {activePopoverDeliveryId === delivery.id && (
+                              <div className="absolute right-0 sm:right-auto sm:left-0 mt-2 w-72 rounded-xl bg-brand-card border border-brand-border shadow-2xl p-4 z-50">
+                                <div className="flex justify-between items-center mb-3">
+                                  <h4 className="text-xs font-bold text-brand-muted uppercase tracking-widest">Filtrowanie</h4>
+                                  {hasActiveFilters && (
+                                    <button onClick={() => resetFilters(delivery.id)} className="text-xs font-medium text-brand-muted hover:text-white transition-colors">
+                                      Wyczyść
+                                    </button>
+                                  )}
+                                </div>
+
+                                <div className="space-y-3">
+                                  <div>
+                                    <label className="block text-xs text-brand-muted mb-1">Status</label>
+                                    <select
+                                      value={f.status}
+                                      onChange={(e) => handleFilterChange(delivery.id, 'status', e.target.value)}
+                                      className="w-full bg-brand-bg border border-brand-border rounded py-1.5 px-2 text-xs text-white focus:ring-1 focus:ring-brand-border outline-none transition-colors cursor-pointer"
+                                    >
+                                      <option value="All">Wszystkie statusy</option>
+                                      <option value="In stock">In stock</option>
+                                      <option value="Posted">Posted</option>
+                                      <option value="Shipped">Shipped</option>
+                                      <option value="Sold">Sold</option>
+                                    </select>
+                                  </div>
+
+                                  <div>
+                                    <label className="block text-xs text-brand-muted mb-1">Cena minimalna</label>
+                                    <div className="flex items-center gap-1 bg-brand-bg border border-brand-border rounded px-2 focus-within:border-brand-muted transition-colors">
+                                      <span className="text-brand-muted text-xs">&ge;</span>
+                                      <input
+                                        type="number"
+                                        placeholder="0"
+                                        value={f.minPrice}
+                                        onChange={(e) => handleFilterChange(delivery.id, 'minPrice', e.target.value)}
+                                        className="w-full bg-transparent border-none py-1.5 text-xs text-white focus:ring-0 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                      />
+                                      <span className="text-brand-muted text-xs">PLN</span>
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <label className="block text-xs text-brand-muted mb-1">Data sprzedaży (Od - Do)</label>
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="date"
+                                        value={f.dateFrom}
+                                        onChange={(e) => handleFilterChange(delivery.id, 'dateFrom', e.target.value)}
+                                        className="w-full bg-brand-bg border border-brand-border rounded py-1.5 px-2 text-xs text-brand-muted focus:ring-1 focus:ring-brand-border outline-none"
+                                      />
+                                      <input
+                                        type="date"
+                                        value={f.dateTo}
+                                        onChange={(e) => handleFilterChange(delivery.id, 'dateTo', e.target.value)}
+                                        className="w-full bg-brand-bg border border-brand-border rounded py-1.5 px-2 text-xs text-brand-muted focus:ring-1 focus:ring-brand-border outline-none"
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <h4 className="text-xs font-bold text-brand-muted uppercase tracking-widest mt-5 mb-3 pt-4 border-t border-brand-border/50">Sortowanie</h4>
+                                <div>
+                                  <select
+                                    value={f.sort}
+                                    onChange={(e) => handleFilterChange(delivery.id, 'sort', e.target.value)}
+                                    className="w-full bg-brand-bg border border-brand-border rounded py-1.5 px-2 text-xs text-white focus:ring-1 focus:ring-brand-border outline-none transition-colors cursor-pointer"
+                                  >
+                                    <option value="none">Brak (Domyślne)</option>
+                                    <option value="price-desc">Cena: od najwyższej</option>
+                                    <option value="price-asc">Cena: od najniższej</option>
+                                    <option value="date-desc">Data: od najnowszej</option>
+                                    <option value="profit-desc">Zysk: od najwyższego</option>
+                                  </select>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          <button
+                            onClick={() => exportCSV(delivery, filteredItems)}
+                            className="bg-brand-bg border border-brand-border text-brand-muted hover:text-white hover:bg-brand-hover px-3 py-1.5 rounded-md font-medium text-sm transition-colors flex items-center gap-1.5 active:scale-95"
+                            title="Eksportuj widoczne do CSV"
+                          >
+                            <i data-lucide="file-spreadsheet" className="w-4 h-4"></i>
+                            <span className="hidden lg:inline">Excel</span>
+                          </button>
+
+                          <div className="w-px h-5 bg-brand-border mx-0.5"></div>
+
+                          <button
+                            onClick={() => addItem(delivery.id)}
+                            className="bg-brand-bg border border-brand-border text-brand-text hover:bg-brand-hover px-3 py-1.5 rounded-md font-medium text-sm transition-colors flex items-center gap-1.5 active:scale-95"
+                          >
+                            <i data-lucide="plus" className="w-4 h-4"></i>
+                            Dodaj parę
+                          </button>
+                          <button
+                            onClick={() => deleteDelivery(delivery.id)}
+                            className="text-brand-muted hover:text-red-500 p-1.5 rounded-md hover:bg-brand-hover transition-colors"
+                            title="Usuń dostawę"
+                          >
+                            <i data-lucide="trash-2" className="w-4 h-4"></i>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Table */}
+                      <div className="overflow-x-auto no-scrollbar relative z-0">
+                        <table className="w-full text-left text-sm whitespace-nowrap">
+                          <thead className="bg-brand-bg/20 text-brand-muted font-medium text-xs uppercase tracking-wider border-b border-brand-border">
+                            <tr>
+                              <th className="px-6 py-3.5 min-w-[200px]">Produkt</th>
+                              <th className="px-6 py-3.5 w-24">Rozmiar</th>
+                              <th className="px-6 py-3.5 w-36">Stan</th>
+                              <th className="px-6 py-3.5 w-32">Cena Sprzedaży</th>
+                              <th className="px-6 py-3.5 w-40">Data Sprzedaży</th>
+                              <th className="px-6 py-3.5 w-32">Status</th>
+                              <th className="px-6 py-3.5 min-w-[150px]">Uwagi</th>
+                              <th className="px-6 py-3.5 w-32 text-right">Zysk</th>
+                              <th className="px-6 py-3.5 w-16 text-center"></th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-brand-border/50">
+                            {filteredItems.length === 0 && (
+                              <tr>
+                                <td colSpan="9" className="px-6 py-10 text-center text-brand-muted text-sm">
+                                  {delivery.items.length > 0
+                                    ? "Brak wyników spełniających kryteria filtrów."
+                                    : "Brak dodanych par w tej dostawie. Kliknij 'Dodaj parę'."}
+                                </td>
+                              </tr>
+                            )}
+                            {filteredItems.map((item, index) => {
+                              const sPrice = Number(item.sellPrice) || 0;
+                              const profit = sPrice - unitCost;
+                              const showProfit = item.status === 'Sold' || item.status === 'Shipped';
+
+                              return (
+                                <tr key={item.id} className="hover:bg-brand-hover/50 transition-colors group">
+                                  <td className="px-6 py-2.5 relative">
+                                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-brand-muted/50 w-3 text-right">{index + 1}.</span>
+                                    <input
+                                      type="text"
+                                      value={item.name}
+                                      onChange={(e) => updateItem(delivery.id, item.id, 'name', e.target.value)}
+                                      placeholder="Model buta..."
+                                      className="w-full bg-transparent border-none focus:ring-0 p-0 text-white placeholder-brand-muted/50 font-medium text-sm outline-none pl-1"
+                                    />
+                                  </td>
+                                  <td className="px-6 py-2.5">
+                                    <input
+                                      type="text"
+                                      value={item.size}
+                                      onChange={(e) => updateItem(delivery.id, item.id, 'size', e.target.value)}
+                                      placeholder=""
+                                      className="w-full bg-transparent border-none focus:ring-0 p-0 text-white placeholder-brand-muted/50 text-sm outline-none"
+                                    />
+                                  </td>
+                                  <td className="px-6 py-2.5">
+                                    <select
+                                      value={item.condition}
+                                      onChange={(e) => updateItem(delivery.id, item.id, 'condition', e.target.value)}
+                                      className={`bg-transparent border rounded py-1 pl-2 pr-6 text-xs font-medium focus:ring-1 focus:ring-brand-border focus:border-brand-border cursor-pointer outline-none transition-colors ${getConditionClasses(item.condition)}`}
+                                    >
+                                      <option value="Nowe z metką">Nowe z metką</option>
+                                      <option value="Nowe bez metki">Nowe bez metki</option>
+                                      <option value="Bardzo dobry">Bardzo dobry</option>
+                                      <option value="Dobry">Dobry</option>
+                                      <option value="Zadowalający">Zadowalający</option>
+                                      <option value="Uszkodzone">Uszkodzone</option>
+                                    </select>
+                                  </td>
+                                  <td className="px-6 py-2.5 relative">
+                                    <input
+                                      type="number"
+                                      value={item.sellPrice}
+                                      onChange={(e) => updateItem(delivery.id, item.id, 'sellPrice', e.target.value)}
+                                      className="w-full bg-transparent border-none focus:ring-0 p-0 text-white placeholder-brand-muted/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none text-sm outline-none"
+                                      placeholder="0"
+                                    />
+                                  </td>
+                                  <td className="px-6 py-2.5">
+                                    <input
+                                      type="date"
+                                      value={item.saleDate}
+                                      onChange={(e) => updateItem(delivery.id, item.id, 'saleDate', e.target.value)}
+                                      className="w-full bg-transparent border-none focus:ring-0 p-0 text-brand-muted text-sm outline-none cursor-pointer"
+                                    />
+                                  </td>
+                                  <td className="px-6 py-2.5">
+                                    <select
+                                      value={item.status}
+                                      onChange={(e) => updateItem(delivery.id, item.id, 'status', e.target.value)}
+                                      className={`bg-transparent border rounded py-1 pl-2 pr-6 text-xs font-semibold focus:ring-1 focus:ring-brand-border focus:border-transparent cursor-pointer outline-none transition-colors ${getStatusClasses(item.status)}`}
+                                    >
+                                      <option value="In stock">In stock</option>
+                                      <option value="Posted">Posted</option>
+                                      <option value="Shipped">Shipped</option>
+                                      <option value="Sold">Sold</option>
+                                    </select>
+                                  </td>
+                                  <td className="px-6 py-2.5">
+                                    <input
+                                      type="text"
+                                      value={item.notes}
+                                      onChange={(e) => updateItem(delivery.id, item.id, 'notes', e.target.value)}
+                                      placeholder="dodaj..."
+                                      className="w-full bg-transparent border-none focus:ring-0 p-0 text-brand-muted/80 placeholder-brand-muted/30 text-sm outline-none"
+                                    />
+                                  </td>
+                                  <td className="px-6 py-2.5 text-right">
+                                    {showProfit ? (
+                                      <span className={`font-medium ${profit >= 0 ? 'text-[#00E676]' : 'text-red-500'}`}>
+                                        {profit > 0 ? '+' : ''}{formatCurrency(profit)}
+                                      </span>
+                                    ) : (
+                                      <span className="text-brand-border">-</span>
+                                    )}
+                                  </td>
+                                  <td className="px-6 py-2.5 text-center">
+                                    <button
+                                      onClick={() => deleteItem(delivery.id, item.id)}
+                                      className="text-brand-border hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all p-1.5 rounded-md hover:bg-brand-hover"
+                                    >
+                                      <i data-lucide="x" className="w-4 h-4"></i>
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          </main>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+
+</html>
