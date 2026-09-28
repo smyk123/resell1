@@ -10,12 +10,12 @@
   <link rel="manifest" href="manifest.json">
 
   <!-- React 18 -->
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="./libs/react.production.min.js"></script>
+  <script src="./libs/react-dom.production.min.js"></script>
   <!-- Babel -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="./libs/babel.min.js"></script>
   <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="./libs/tailwind.js"></script>
 
   <!-- Tailwind Config -->
   <script>
@@ -41,9 +41,13 @@
     }
   </script>
 
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="./libs/inter_font.css" rel="stylesheet">
   <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="./libs/lucide.js"></script>
+
+  <!-- Firebase SDK (compat mode - no build tools needed) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
   <style>
     body {
@@ -79,145 +83,394 @@
       background-color: #171717;
       color: #ffffff;
     }
+
+    /* PIN Lock */
+    @keyframes pinShake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-8px); }
+      40% { transform: translateX(8px); }
+      60% { transform: translateX(-6px); }
+      80% { transform: translateX(6px); }
+    }
+    .pin-shake { animation: pinShake 0.4s ease; }
+
+    @keyframes pinDotPop {
+      0% { transform: scale(0.6); opacity: 0.4; }
+      60% { transform: scale(1.15); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .pin-dot-filled { animation: pinDotPop 0.15s ease forwards; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .fade-in { animation: fadeIn 0.35s ease both; }
+
+    /* Sync pulse */
+    @keyframes syncPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.45; }
+    }
+    .sync-pulse { animation: syncPulse 1.2s ease-in-out infinite; }
   </style>
 </head>
 
 <body class="bg-brand-bg text-brand-text">
-  <div id="root"></div>
+  <!-- Visible error display -->
+  <div id="error-display" style="display:none;position:fixed;inset:0;background:#0a0a0a;color:#ff5555;font-family:monospace;padding:40px;z-index:9999;overflow:auto;"></div>
 
-  <!-- PWA Setup -->
+  <div id="root">
+    <!-- Loading indicator shown before React mounts -->
+    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0a0a;">
+      <div style="text-align:center;color:#a3a3a3;">
+        <div style="font-size:32px;margin-bottom:12px;">💰</div>
+        <div style="font-size:14px;">Ładowanie ResellTracker...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Global error catcher -->
+  <script>
+    window.onerror = function(msg, src, line, col, err) {
+      var el = document.getElementById('error-display');
+      el.style.display = 'block';
+      el.innerHTML = '<h2 style="color:#ff5555;margin-bottom:16px">⚠️ JavaScript Error (copy this and report it)</h2>'
+        + '<pre style="background:#111;padding:16px;border-radius:8px;overflow:auto;font-size:12px;color:#ffaa44;">'
+        + 'Message: ' + msg + '\n'
+        + 'Source:  ' + src + '\n'
+        + 'Line:    ' + line + ':' + col + '\n'
+        + (err && err.stack ? '\nStack:\n' + err.stack : '')
+        + '</pre>';
+    };
+    window.addEventListener('unhandledrejection', function(e) {
+      var el = document.getElementById('error-display');
+      el.style.display = 'block';
+      el.innerHTML += '<h2 style="color:#ff9944;margin-top:24px;margin-bottom:8px">⚠️ Unhandled Promise Rejection</h2>'
+        + '<pre style="background:#111;padding:16px;border-radius:8px;font-size:12px;color:#ffaa44;">' + (e.reason || e) + '</pre>';
+    });
+  </script>
+
+  <!-- Service Worker: unregister all, clear caches, reload once for clean start -->
   <script>
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').then(registration => {
-          console.log('PWA ServiceWorker registered');
-        }).catch(err => {
-          console.log('PWA ServiceWorker registration failed: ', err);
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        var had = registrations.length > 0;
+        var done = registrations.map(function(reg) { return reg.unregister(); });
+        return Promise.all(done).then(function() {
+          if (window.caches) {
+            return caches.keys().then(function(keys) {
+              return Promise.all(keys.map(function(k) { return caches.delete(k); }));
+            });
+          }
+        }).then(function() {
+          if (had && !sessionStorage.getItem('sw_cleared')) {
+            sessionStorage.setItem('sw_cleared', '1');
+            location.reload();
+          }
         });
       });
     }
   </script>
 
-  <script type="text/babel">
-    const { useState, useEffect, useMemo, useRef } = React;
+  <!-- ============================================================
+       FIREBASE CONFIG
+       Replace the placeholder values below with YOUR Firebase project
+       config. You will get these values from the Firebase Console.
+       See the setup guide for step-by-step instructions.
+       ============================================================ -->
+  <script>
+    const FIREBASE_CONFIG = {
+      apiKey:            "AIzaSyCS5ZXlzfAAe5q941jrTgazbw99nxSPBcs",
+      authDomain:        "database-2bd8e.firebaseapp.com",
+      projectId:         "database-2bd8e",
+      storageBucket:     "database-2bd8e.firebasestorage.app",
+      messagingSenderId: "1028140687868",
+      appId:             "1:1028140687868:web:494ef4711f500b4c0d9279"
+    };
 
-    function App() {
-      // LocalStorage init with Data Migration for v4
-      const [deliveries, setDeliveries] = useState(() => {
-        const saved = localStorage.getItem('sneaker_deliveries_v4');
+    // PIN that protects the app (change this to whatever you want)
+    const APP_PIN = "9251";
+
+    // Firestore document path where all data is stored
+    const FIRESTORE_DOC_PATH = "resell/data";
+
+    // Initialize Firebase (only if config looks filled in)
+    const firebaseReady = FIREBASE_CONFIG.apiKey !== "PASTE_YOUR_API_KEY_HERE";
+    if (firebaseReady) {
+      firebase.initializeApp(FIREBASE_CONFIG);
+      window._db = firebase.firestore();
+    }
+  </script>
+
+  <script type="text/babel" data-presets="react" data-plugins="transform-class-properties">
+    /* @jsxRuntime classic */
+    const { useState, useEffect, useMemo, useRef, useCallback } = React;
+
+    // ── PIN Lock Screen ──────────────────────────────────────────
+    function PinLock({ onUnlock }) {
+      const [digits, setDigits]     = useState([]);
+      const [shake, setShake]       = useState(false);
+      const [error, setError]       = useState('');
+      const PIN_LENGTH = APP_PIN.length;
+
+      const handleDigit = useCallback((d) => {
+        if (digits.length >= PIN_LENGTH) return;
+        const next = [...digits, d];
+        setDigits(next);
+        if (next.length === PIN_LENGTH) {
+          setTimeout(() => {
+            if (next.join('') === APP_PIN) {
+              onUnlock();
+            } else {
+              setShake(true);
+              setError('Nieprawidłowy PIN');
+              setTimeout(() => { setDigits([]); setShake(false); setError(''); }, 600);
+            }
+          }, 120);
+        }
+      }, [digits]);
+
+      const handleBackspace = useCallback(() => {
+        setDigits(d => d.slice(0, -1));
+        setError('');
+      }, []);
+
+      useEffect(() => {
+        const onKey = (e) => {
+          if (e.key >= '0' && e.key <= '9') handleDigit(e.key);
+          if (e.key === 'Backspace') handleBackspace();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, [handleDigit, handleBackspace]);
+
+      return (
+        <div className="fixed inset-0 flex flex-col items-center justify-center bg-brand-bg" style={{zIndex:9999}}>
+          {/* Subtle grid background */}
+          <div style={{
+            position:'absolute', inset:0,
+            backgroundImage:'radial-gradient(circle at 50% 0%, rgba(0,230,118,0.06) 0%, transparent 70%)',
+            pointerEvents:'none'
+          }}/>
+
+          <div className="fade-in flex flex-col items-center gap-8 relative z-10">
+            {/* Logo */}
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-16 h-16 bg-brand-card border border-brand-border rounded-2xl flex items-center justify-center shadow-2xl" style={{boxShadow:'0 0 40px rgba(0,230,118,0.12)'}}>
+                <i data-lucide="package" style={{width:28,height:28,color:'#00E676'}}></i>
+              </div>
+              <h1 className="text-xl font-semibold text-white tracking-tight">ResellTracker</h1>
+              <p className="text-brand-muted text-sm">Wprowadź PIN, aby kontynuować</p>
+            </div>
+
+            {/* PIN dots */}
+            <div className={`flex gap-4 ${shake ? 'pin-shake' : ''}`}>
+              {Array.from({length: PIN_LENGTH}).map((_, i) => (
+                <div
+                  key={i}
+                  className={`w-4 h-4 rounded-full border-2 transition-all duration-150 ${i < digits.length ? 'bg-[#00E676] border-[#00E676] pin-dot-filled' : 'bg-transparent border-brand-border'}`}
+                />
+              ))}
+            </div>
+
+            {error && <p className="text-red-400 text-xs font-medium -mt-4">{error}</p>}
+
+            {/* Numpad */}
+            <div className="grid grid-cols-3 gap-3 w-64">
+              {['1','2','3','4','5','6','7','8','9','',  '0','⌫'].map((k, idx) => {
+                if (k === '') return <div key={idx} />;
+                return (
+                  <button
+                    key={k}
+                    onClick={() => k === '⌫' ? handleBackspace() : handleDigit(k)}
+                    className="h-16 rounded-xl bg-brand-card border border-brand-border text-white font-semibold text-xl hover:bg-brand-hover hover:border-brand-muted active:scale-95 transition-all duration-100 flex items-center justify-center select-none"
+                    style={k === '⌫' ? {color:'#a3a3a3', fontSize:'18px'} : {}}
+                  >
+                    {k}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Helpers ─────────────────────────────────────────────────
+    function migrateFromLocalStorage() {
+      // Try to read existing local data to migrate to Firestore on first cloud use
+      const keys = ['sneaker_deliveries_v4', 'sneaker_deliveries_v3', 'sneaker_deliveries_v2'];
+      for (const key of keys) {
+        const saved = localStorage.getItem(key);
         if (saved) {
           try {
             const parsed = JSON.parse(saved);
-            return parsed.map(d => ({
-              ...d,
-              purchaseDate: d.purchaseDate || d.createdAt?.slice(0, 10) || new Date().toISOString().slice(0, 10),
-            }));
-          } catch (e) { }
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              return parsed.map(d => ({
+                ...d,
+                purchaseDate: d.purchaseDate || d.createdAt?.slice(0,10) || new Date().toISOString().slice(0,10),
+                items: (d.items || []).map(i => {
+                  let cond = i.condition || 'Nowe z metką';
+                  if (cond === 'Nowe') cond = 'Nowe z metką';
+                  if (cond === 'Jak nowe') cond = 'Bardzo dobry';
+                  let stat = i.status || 'In stock';
+                  if (stat === 'In Stock') stat = 'In stock';
+                  return { ...i, condition: cond, status: stat, notes: i.notes || '' };
+                })
+              }));
+            }
+          } catch(e) {}
         }
+      }
+      return null;
+    }
 
-        // Migrate from v3
-        const v3Saved = localStorage.getItem('sneaker_deliveries_v3');
-        if (v3Saved) {
-          try {
-            const parsed = JSON.parse(v3Saved);
-            return parsed.map(d => ({
-              ...d,
-              createdAt: d.createdAt || new Date().toISOString(),
-              purchaseDate: d.purchaseDate || d.createdAt?.slice(0, 10) || new Date().toISOString().slice(0, 10),
-            }));
-          } catch (e) { }
-        }
+    // ── Main App ─────────────────────────────────────────────────
+    function App() {
+      const [unlocked, setUnlocked]   = useState(() => !!sessionStorage.getItem('rt_unlocked'));
+      const [deliveries, setDeliveries] = useState([]);
+      const [syncStatus, setSyncStatus] = useState('loading'); // 'loading' | 'synced' | 'syncing' | 'offline'
+      const [fbReady]   = useState(() => typeof firebaseReady !== 'undefined' && firebaseReady);
 
-        // Migrate from v2
-        const v2Saved = localStorage.getItem('sneaker_deliveries_v2');
-        if (v2Saved) {
-          try {
-            const parsed = JSON.parse(v2Saved);
-            return parsed.map(d => ({
-              ...d,
-              createdAt: new Date().toISOString(),
-              purchaseDate: new Date().toISOString().slice(0, 10),
-              items: d.items.map(i => {
-                let cond = i.condition || 'Nowe z metką';
-                if (cond === 'Nowe') cond = 'Nowe z metką';
-                if (cond === 'Jak nowe') cond = 'Bardzo dobry';
-                let stat = i.status || 'In stock';
-                if (stat === 'In Stock') stat = 'In stock';
-                return { ...i, condition: cond, status: stat, notes: i.notes || '' };
-              })
-            }));
-          } catch (e) { }
-        }
-        return [];
-      });
+      const [globalMonthFilter, setGlobalMonthFilter] = useState(() =>
+        localStorage.getItem('sneaker_global_month') || 'All'
+      );
+      const [globalBoxSort, setGlobalBoxSort] = useState(() =>
+        localStorage.getItem('sneaker_global_box_sort') || 'desc'
+      );
 
-      const [globalMonthFilter, setGlobalMonthFilter] = useState(() => {
-        return localStorage.getItem('sneaker_global_month') || 'All';
-      });
+      const fileInputRef  = useRef(null);
+      const menuRef       = useRef(null);
+      const popoversRef   = useRef(null);
+      const isSavingRef   = useRef(false); // prevent echo-writes from onSnapshot
+      const dataLoadedRef = useRef(false);  // prevent overwriting localStorage before Firebase loads
 
-      const [globalBoxSort, setGlobalBoxSort] = useState(() => {
-        return localStorage.getItem('sneaker_global_box_sort') || 'desc';
-      });
-
-      const [saveStatus, setSaveStatus] = useState('');
-      const fileInputRef = useRef(null);
-      const menuRef = useRef(null);
-      const popoversRef = useRef(null);
-
-      // UI States
-      const [isModalOpen, setIsModalOpen] = useState(false);
-      const [isMenuOpen, setIsMenuOpen] = useState(false);
+      const [isModalOpen, setIsModalOpen]     = useState(false);
+      const [isMenuOpen, setIsMenuOpen]       = useState(false);
       const [activePopoverDeliveryId, setActivePopoverDeliveryId] = useState(null);
-      const [newDelivery, setNewDelivery] = useState({ name: '', boxCost: '', pairsCount: '', purchaseDate: new Date().toISOString().slice(0, 10) });
-      const [filters, setFilters] = useState(() => {
+      const [newDelivery, setNewDelivery]     = useState({ name:'', boxCost:'', pairsCount:'', purchaseDate: new Date().toISOString().slice(0,10) });
+      const [filters, setFilters]             = useState(() => {
         const saved = localStorage.getItem('sneaker_box_filters');
-        if (saved) {
-          try {
-            return JSON.parse(saved);
-          } catch (e) { }
-        }
+        if (saved) { try { return JSON.parse(saved); } catch(e) {} }
         return {};
       });
 
+      // Persist UI prefs locally
+      useEffect(() => { localStorage.setItem('sneaker_global_month',   globalMonthFilter); }, [globalMonthFilter]);
+      useEffect(() => { localStorage.setItem('sneaker_global_box_sort', globalBoxSort);    }, [globalBoxSort]);
+      useEffect(() => { localStorage.setItem('sneaker_box_filters',     JSON.stringify(filters)); }, [filters]);
+
+      // Re-run Lucide icons after any render
+      useEffect(() => {
+        if (window.lucide) setTimeout(() => window.lucide.createIcons(), 0);
+      });
+
+      // ── Firebase real-time listener ───────────────────────────
+      useEffect(() => {
+        if (!unlocked) return;
+        if (!fbReady) {
+          // No Firebase — fall back to localStorage (offline mode)
+          setSyncStatus('offline');
+          const saved = localStorage.getItem('sneaker_deliveries_v4');
+          if (saved) { try { dataLoadedRef.current = true; setDeliveries(JSON.parse(saved)); } catch(e) {} }
+          else { const migrated = migrateFromLocalStorage(); if (migrated) { dataLoadedRef.current = true; setDeliveries(migrated); } }
+          return;
+        }
+
+        setSyncStatus('loading');
+        const docRef = window._db.doc(FIRESTORE_DOC_PATH);
+
+        const unsub = docRef.onSnapshot(
+          (snap) => {
+            if (isSavingRef.current) return; // skip our own write echo
+            if (snap.exists) {
+              const data = snap.data();
+              const cloudDeliveries = data.deliveries || [];
+              if (cloudDeliveries.length > 0) {
+                // Cloud has real data — use it
+                dataLoadedRef.current = true;
+                setDeliveries(cloudDeliveries);
+                setSyncStatus('synced');
+              } else {
+                // Cloud is empty — maybe it was accidentally wiped, check localStorage
+                const local = migrateFromLocalStorage();
+                if (local && local.length > 0) {
+                  docRef.set({ deliveries: local })
+                    .then(() => { dataLoadedRef.current = true; setDeliveries(local); setSyncStatus('synced'); })
+                    .catch(() => { dataLoadedRef.current = true; setDeliveries(local); setSyncStatus('offline'); });
+                } else {
+                  dataLoadedRef.current = true;
+                  setDeliveries([]);
+                  setSyncStatus('synced');
+                }
+              }
+            } else {
+              // First time: try to migrate local data up to the cloud
+              const local = migrateFromLocalStorage();
+              if (local && local.length > 0) {
+                docRef.set({ deliveries: local })
+                  .then(() => { dataLoadedRef.current = true; setDeliveries(local); })
+                  .catch(() => { dataLoadedRef.current = true; setDeliveries(local); setSyncStatus('offline'); });
+              } else {
+                dataLoadedRef.current = true;
+                setDeliveries([]);
+              }
+            }
+            setSyncStatus('synced');
+          },
+          (err) => {
+            console.error('Firestore error:', err);
+            setSyncStatus('offline');
+            const saved = localStorage.getItem('sneaker_deliveries_v4');
+            if (saved) { try { setDeliveries(JSON.parse(saved)); } catch(e) {} }
+          }
+        );
+
+        return () => unsub();
+      }, [unlocked, fbReady]);
+
+      // ── Write deliveries to Firestore (debounced 800ms) ──────
+      const saveTimerRef = useRef(null);
+      useEffect(() => {
+        if (!unlocked) return;
+        // CRITICAL: never overwrite localStorage until Firebase has loaded real data
+        if (!dataLoadedRef.current) return;
+        // Keep a local copy as offline backup
+        localStorage.setItem('sneaker_deliveries_v4', JSON.stringify(deliveries));
+
+        if (!fbReady || syncStatus === 'loading') return;
+
+        clearTimeout(saveTimerRef.current);
+        setSyncStatus('syncing');
+        saveTimerRef.current = setTimeout(() => {
+          isSavingRef.current = true;
+          window._db.doc(FIRESTORE_DOC_PATH)
+            .set({ deliveries })
+            .then(() => { setSyncStatus('synced'); })
+            .catch(() => { setSyncStatus('offline'); })
+            .finally(() => { setTimeout(() => { isSavingRef.current = false; }, 300); });
+        }, 800);
+
+        return () => clearTimeout(saveTimerRef.current);
+      }, [deliveries]);
+
+      // ── Handle unlock ────────────────────────────────────────
+      const handleUnlock = () => {
+        sessionStorage.setItem('rt_unlocked', '1');
+        setUnlocked(true);
+      };
 
       // Close menus on outside click
       useEffect(() => {
-        const handleClickOutside = (event) => {
-          if (menuRef.current && !menuRef.current.contains(event.target)) {
-            setIsMenuOpen(false);
-          }
-          if (popoversRef.current && !popoversRef.current.contains(event.target)) {
-            setActivePopoverDeliveryId(null);
-          }
+        const handler = (e) => {
+          if (menuRef.current && !menuRef.current.contains(e.target)) setIsMenuOpen(false);
+          if (popoversRef.current && !popoversRef.current.contains(e.target)) setActivePopoverDeliveryId(null);
         };
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
       }, []);
 
-      // Save Data to v4
-      useEffect(() => {
-        localStorage.setItem('sneaker_deliveries_v4', JSON.stringify(deliveries));
-        localStorage.setItem('sneaker_box_filters', JSON.stringify(filters));
-
-        setSaveStatus('Zapisano');
-        const timer = setTimeout(() => setSaveStatus(''), 2000);
-
-        if (window.lucide) {
-          setTimeout(() => window.lucide.createIcons(), 0);
-        }
-        return () => clearTimeout(timer);
-      }, [deliveries, filters, activePopoverDeliveryId, globalMonthFilter, globalBoxSort]);
-
-
-
-      // Save Global Filters to LocalStorage
-      useEffect(() => {
-        localStorage.setItem('sneaker_global_month', globalMonthFilter);
-      }, [globalMonthFilter]);
-
-      useEffect(() => {
-        localStorage.setItem('sneaker_global_box_sort', globalBoxSort);
-      }, [globalBoxSort]);
 
       // Dynamic List of Available Months
       const availableMonths = useMemo(() => {
@@ -252,6 +505,7 @@
         let totalProfit = 0;
         let itemsSold = 0;
         let totalBoxCost = 0;
+        let itemsInStock = 0;
 
         let filterYear = null, filterMonth = null;
         if (globalMonthFilter !== 'All') {
@@ -269,6 +523,11 @@
           }
 
           delivery.items.forEach(item => {
+            // Count in stock (everything that is NOT Sold)
+            if (item.status !== 'Sold') {
+              itemsInStock += 1;
+            }
+
             if (item.status === 'Sold' || item.status === 'Shipped') {
               const sell = Number(item.sellPrice) || 0;
 
@@ -297,7 +556,7 @@
 
         totalProfit = totalRevenue - totalBoxCost;
 
-        return { totalRevenue, totalProfit, itemsSold, totalBoxCost };
+        return { totalRevenue, totalProfit, itemsSold, totalBoxCost, itemsInStock };
       }, [deliveries, globalMonthFilter]);
 
       // Monthly Items
@@ -331,6 +590,26 @@
         // Sort by sale date desc
         return items.sort((a, b) => new Date(b.saleDate).getTime() - new Date(a.saleDate).getTime());
       }, [deliveries, globalMonthFilter]);
+
+      // Quarterly Revenue
+      const quarterlyRevenue = useMemo(() => {
+        const map = {};
+        deliveries.forEach(delivery => {
+          delivery.items.forEach(item => {
+            if ((item.status === 'Sold' || item.status === 'Shipped') && item.saleDate) {
+              const date = new Date(item.saleDate);
+              if (isNaN(date)) return;
+              const year = date.getFullYear();
+              const quarter = Math.floor(date.getMonth() / 3) + 1;
+              const key = `${year}-Q${quarter}`;
+              map[key] = (map[key] || 0) + (Number(item.sellPrice) || 0);
+            }
+          });
+        });
+        return Object.entries(map)
+          .sort((a, b) => b[0].localeCompare(a[0]))
+          .map(([key, revenue]) => ({ key, revenue }));
+      }, [deliveries]);
 
       // Sorted Deliveries
       const sortedDeliveries = useMemo(() => {
@@ -425,11 +704,15 @@
       };
 
       const deleteItem = (deliveryId, itemId) => {
+        if (!confirm('Czy na pewno chcesz usunąć tę parę? Liczba par w kartonie zostanie zmniejszona o 1.')) return;
         const updatedDeliveries = deliveries.map(delivery => {
           if (delivery.id === deliveryId) {
+            const newItems = delivery.items.filter(item => item.id !== itemId);
+            const newPairsCount = Math.max(1, (Number(delivery.pairsCount) || 1) - 1);
             return {
               ...delivery,
-              items: delivery.items.filter(item => item.id !== itemId)
+              pairsCount: newPairsCount,
+              items: newItems
             };
           }
           return delivery;
@@ -554,6 +837,8 @@
         }
       };
 
+      if (!unlocked) return <PinLock onUnlock={handleUnlock} />;
+
       return (
         <div className="min-h-screen pb-24 font-sans selection:bg-white/20">
 
@@ -668,11 +953,31 @@
                   ))}
                 </select>
 
-                {/* Save Status Pulse */}
-                <span className={`hidden md:flex text-xs font-medium text-[#00E676] bg-[#00E676]/10 border border-[#00E676]/20 px-2 py-0.5 rounded-full transition-opacity duration-300 items-center ${saveStatus ? 'opacity-100' : 'opacity-0'}`}>
-                  <i data-lucide="check" className="w-3 h-3 mr-1"></i>
-                  {saveStatus}
-                </span>
+                {/* Sync Status Badge */}
+                {syncStatus === 'loading' && (
+                  <span className="hidden md:flex text-xs font-medium text-brand-muted bg-brand-card border border-brand-border px-2 py-0.5 rounded-full items-center gap-1 sync-pulse">
+                    <i data-lucide="cloud" className="w-3 h-3"></i>
+                    Łączenie...
+                  </span>
+                )}
+                {syncStatus === 'syncing' && (
+                  <span className="hidden md:flex text-xs font-medium text-amber-400 bg-amber-400/10 border border-amber-400/20 px-2 py-0.5 rounded-full items-center gap-1 sync-pulse">
+                    <i data-lucide="refresh-cw" className="w-3 h-3"></i>
+                    Synchronizacja...
+                  </span>
+                )}
+                {syncStatus === 'synced' && (
+                  <span className="hidden md:flex text-xs font-medium text-[#00E676] bg-[#00E676]/10 border border-[#00E676]/20 px-2 py-0.5 rounded-full items-center gap-1">
+                    <i data-lucide="cloud" className="w-3 h-3"></i>
+                    Zsynchronizowano
+                  </span>
+                )}
+                {syncStatus === 'offline' && (
+                  <span className="hidden md:flex text-xs font-medium text-red-400 bg-red-400/10 border border-red-400/20 px-2 py-0.5 rounded-full items-center gap-1" title="Brak Firebase — skonfiguruj klucze lub pracujesz offline">
+                    <i data-lucide="cloud-off" className="w-3 h-3"></i>
+                    Offline
+                  </span>
+                )}
               </div>
 
               {/* Management Actions - Kebab Menu */}
@@ -718,7 +1023,50 @@
 
             {/* Global Dashboard */}
             <section>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+              {/* Quarterly Revenue Table */}
+              {quarterlyRevenue.length > 0 && (
+                <div className="mb-6">
+                  <div className="inline-block bg-brand-card border border-brand-border rounded-xl overflow-hidden shadow-lg">
+                    <div className="px-4 py-3 border-b border-brand-border flex items-center gap-2">
+                      <div className="w-6 h-6 bg-brand-bg rounded-md border border-brand-border flex items-center justify-center">
+                        <i data-lucide="bar-chart-2" className="w-3.5 h-3.5 text-[#00E676]"></i>
+                      </div>
+                      <span className="text-sm font-semibold text-white tracking-tight">Przychód kwartalny</span>
+                    </div>
+                    <table className="text-sm">
+                      <thead>
+                        <tr className="border-b border-brand-border">
+                          <th className="px-4 py-2 text-left text-xs font-medium text-brand-muted uppercase tracking-wider">Kwartał</th>
+                          <th className="px-4 py-2 text-right text-xs font-medium text-brand-muted uppercase tracking-wider">Przychód</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {quarterlyRevenue.map(({ key, revenue }, idx) => (
+                          <tr key={key} className={`${idx !== quarterlyRevenue.length - 1 ? 'border-b border-brand-border/50' : ''} hover:bg-brand-hover/40 transition-colors`}>
+                            <td className="px-4 py-2.5 text-white font-medium whitespace-nowrap">{key}</td>
+                            <td className="px-4 py-2.5 text-right font-semibold text-[#00E676] whitespace-nowrap">{formatCurrency(revenue)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-5">
+                {/* Metric Card: In Stock */}
+                <div className="bg-brand-card rounded-xl p-6 border border-brand-border flex flex-col justify-between relative overflow-hidden group">
+                  <div className="absolute inset-0 bg-gradient-to-br from-purple-500/[0.05] to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  <div className="text-sm font-medium text-brand-muted mb-2 flex justify-between items-center relative z-10">
+                    Na stanie
+                    <div className="w-8 h-8 bg-brand-bg rounded-lg border border-brand-border flex items-center justify-center">
+                      <i data-lucide="archive" className="w-4 h-4 text-purple-400"></i>
+                    </div>
+                  </div>
+                  <div className="text-3xl font-semibold tracking-tight text-purple-400 mt-2 relative z-10">
+                    {metrics.itemsInStock} <span className="text-base font-normal text-brand-muted">par</span>
+                  </div>
+                </div>
+
                 {/* Metric Card 1 */}
                 <div className="bg-brand-card rounded-xl p-6 border border-brand-border flex flex-col justify-between relative overflow-hidden group">
                   <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
@@ -877,8 +1225,8 @@
                           const getStatusWeight = (s) => {
                             if (s === 'Sold') return 1;
                             if (s === 'Shipped') return 2;
-                            if (s === 'In stock') return 3;
-                            if (s === 'Posted') return 4;
+                            if (s === 'Posted') return 3;
+                            if (s === 'In stock') return 4;
                             return 5;
                           };
                           return getStatusWeight(a.status) - getStatusWeight(b.status);
@@ -1057,15 +1405,15 @@
                           <table className="w-full text-left text-sm whitespace-nowrap">
                             <thead className="bg-brand-bg/20 text-brand-muted font-medium text-xs uppercase tracking-wider border-b border-brand-border">
                               <tr>
-                                <th className="px-6 py-3.5 min-w-[200px]">Produkt</th>
+                                <th className="px-6 py-3.5 min-w-[220px]">Produkt</th>
                                 <th className="px-6 py-3.5 w-24">Rozmiar</th>
                                 <th className="px-6 py-3.5 w-24">Wkładka</th>
-                                <th className="px-6 py-3.5 w-36">Stan</th>
-                                <th className="px-6 py-3.5 w-32">Cena Katalogowa</th>
-                                <th className="px-6 py-3.5 w-32">Cena Sprzedaży</th>
-                                <th className="px-6 py-3.5 w-40">Data Sprzedaży</th>
-                                <th className="px-6 py-3.5 w-32">Status</th>
-                                <th className="px-6 py-3.5 w-32 text-right">Zysk</th>
+                                <th className="px-6 py-3.5 w-40">Stan</th>
+                                <th className="px-6 py-3.5 w-36">Cena kat.</th>
+                                <th className="px-6 py-3.5 w-36">Cena Sprzedaży</th>
+                                <th className="px-6 py-3.5 w-44">Data Sprzedaży</th>
+                                <th className="px-6 py-3.5 w-36">Status</th>
+                                <th className="px-6 py-3.5 w-40 text-right">Zysk</th>
                                 <th className="px-6 py-3.5 w-16 text-center"></th>
                               </tr>
                             </thead>
@@ -1175,15 +1523,16 @@
                                         <span className="text-brand-border">-</span>
                                       )}
                                     </td>
-                                    <td className="px-6 py-2.5 flex items-center justify-end gap-1">
-
-                                      <button
-                                        onClick={() => deleteItem(delivery.id, item.id)}
-                                        className="text-brand-border hover:text-red-500 transition-all p-1.5 rounded-md hover:bg-brand-hover"
-                                        title="Usuń parę"
-                                      >
-                                        <i data-lucide="x" className="w-4 h-4"></i>
-                                      </button>
+                                    <td className="px-6 py-2.5">
+                                      <div className="flex items-center justify-end">
+                                        <button
+                                          onClick={() => deleteItem(delivery.id, item.id)}
+                                          className="opacity-0 group-hover:opacity-100 text-brand-muted hover:text-red-500 transition-all duration-150 p-1.5 rounded-md hover:bg-red-500/10"
+                                          title="Usuń parę"
+                                        >
+                                          <i data-lucide="trash-2" className="w-4 h-4"></i>
+                                        </button>
+                                      </div>
                                     </td>
                                   </tr>
                                 );

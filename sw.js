@@ -1,14 +1,10 @@
-const CACHE_NAME = 'reselltracker-v1';
-
-self.addEventListener('install', (e) => {
-  self.skipWaiting();
-});
-
+// NUKE: Unregister this service worker and clear all caches
+self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => {
+  e.waitUntil(
+    caches.keys()
+      .then(keys => Promise.all(keys.map(k => caches.delete(k))))
+      .then(() => self.registration.unregister())
+  );
   self.clients.claim();
-});
-
-self.addEventListener('fetch', (e) => {
-  // A minimal fetch handler is required by Chrome to trigger the "Install" prompt
-  e.respondWith(fetch(e.request).catch(() => new Response("Offline")));
 });

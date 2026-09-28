@@ -7,7 +7,7 @@ WshShell.CurrentDirectory = strPath
 WshShell.Run "cmd /c start.bat", 0, False
 
 ' 2. Czekamy 2 sekundy na rozruch serwera
-WScript.Sleep 2000
+WScript.Sleep 3000
 
 ' 3. Odpalenie konkretnego skrótu z Pulpitu
 ' Upewnij się, że nazwa poniżej jest IDENTYCZNA jak nazwa ikonki na pulpicie!
