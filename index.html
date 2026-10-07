@@ -336,6 +336,9 @@
       const [globalMonthFilter, setGlobalMonthFilter] = useState(() =>
         localStorage.getItem('sneaker_global_month') || 'All'
       );
+      const [globalCategoryFilter, setGlobalCategoryFilter] = useState(() =>
+        localStorage.getItem('sneaker_global_category') || 'All'
+      );
       const [globalBoxSort, setGlobalBoxSort] = useState(() =>
         localStorage.getItem('sneaker_global_box_sort') || 'desc'
       );
@@ -349,7 +352,7 @@
       const [isModalOpen, setIsModalOpen]     = useState(false);
       const [isMenuOpen, setIsMenuOpen]       = useState(false);
       const [activePopoverDeliveryId, setActivePopoverDeliveryId] = useState(null);
-      const [newDelivery, setNewDelivery]     = useState({ name:'', boxCost:'', pairsCount:'', purchaseDate: new Date().toISOString().slice(0,10) });
+      const [newDelivery, setNewDelivery]     = useState({ name:'', boxCost:'', pairsCount:'', purchaseDate: new Date().toISOString().slice(0,10), category: 'Buty' });
       const [filters, setFilters]             = useState(() => {
         const saved = localStorage.getItem('sneaker_box_filters');
         if (saved) { try { return JSON.parse(saved); } catch(e) {} }
@@ -358,6 +361,7 @@
 
       // Persist UI prefs locally
       useEffect(() => { localStorage.setItem('sneaker_global_month',   globalMonthFilter); }, [globalMonthFilter]);
+      useEffect(() => { localStorage.setItem('sneaker_global_category', globalCategoryFilter); }, [globalCategoryFilter]);
       useEffect(() => { localStorage.setItem('sneaker_global_box_sort', globalBoxSort);    }, [globalBoxSort]);
       useEffect(() => { localStorage.setItem('sneaker_box_filters',     JSON.stringify(filters)); }, [filters]);
 
@@ -499,6 +503,12 @@
         });
       }, [deliveries]);
 
+      // Filter by global category
+      const filteredDeliveries = useMemo(() => {
+        if (globalCategoryFilter === 'All') return deliveries;
+        return deliveries.filter(d => (d.category || 'Buty') === globalCategoryFilter);
+      }, [deliveries, globalCategoryFilter]);
+
       // Global Metrics (Filtered by Global Time Filter)
       const metrics = useMemo(() => {
         let totalRevenue = 0;
@@ -514,7 +524,7 @@
           filterMonth = parseInt(m) - 1;
         }
 
-        deliveries.forEach(delivery => {
+        filteredDeliveries.forEach(delivery => {
           const unitCost = Number(delivery.pairsCount) > 0 ? (Number(delivery.boxCost) || 0) / Number(delivery.pairsCount) : 0;
 
           // Check Delivery PurchaseDate for Box Cost aggregation (Only in 'All' mode)
@@ -557,7 +567,7 @@
         totalProfit = totalRevenue - totalBoxCost;
 
         return { totalRevenue, totalProfit, itemsSold, totalBoxCost, itemsInStock };
-      }, [deliveries, globalMonthFilter]);
+      }, [filteredDeliveries, globalMonthFilter]);
 
       // Monthly Items
       const monthlyItems = useMemo(() => {
@@ -569,7 +579,7 @@
         filterMonth = parseInt(m) - 1;
 
         const items = [];
-        deliveries.forEach(delivery => {
+        filteredDeliveries.forEach(delivery => {
           const unitCost = Number(delivery.pairsCount) > 0 ? (Number(delivery.boxCost) || 0) / Number(delivery.pairsCount) : 0;
 
           delivery.items.forEach(item => {
@@ -589,12 +599,12 @@
 
         // Sort by sale date desc
         return items.sort((a, b) => new Date(b.saleDate).getTime() - new Date(a.saleDate).getTime());
-      }, [deliveries, globalMonthFilter]);
+      }, [filteredDeliveries, globalMonthFilter]);
 
       // Quarterly Revenue
       const quarterlyRevenue = useMemo(() => {
         const map = {};
-        deliveries.forEach(delivery => {
+        filteredDeliveries.forEach(delivery => {
           delivery.items.forEach(item => {
             if ((item.status === 'Sold' || item.status === 'Shipped') && item.saleDate) {
               const date = new Date(item.saleDate);
@@ -609,11 +619,11 @@
         return Object.entries(map)
           .sort((a, b) => b[0].localeCompare(a[0]))
           .map(([key, revenue]) => ({ key, revenue }));
-      }, [deliveries]);
+      }, [filteredDeliveries]);
 
       // Sorted Deliveries
       const sortedDeliveries = useMemo(() => {
-        return [...deliveries].sort((a, b) => {
+        return [...filteredDeliveries].sort((a, b) => {
           if (globalBoxSort === 'alpha') {
             return (a.name || '').localeCompare(b.name || '');
           }
@@ -628,11 +638,11 @@
             return dateA - dateB;
           }
         });
-      }, [deliveries, globalBoxSort]);
+      }, [filteredDeliveries, globalBoxSort]);
 
       // Handlers
       const openAddDeliveryModal = () => {
-        setNewDelivery({ name: '', boxCost: '', pairsCount: '', purchaseDate: new Date().toISOString().slice(0, 10) });
+        setNewDelivery({ name: '', boxCost: '', pairsCount: '', purchaseDate: new Date().toISOString().slice(0, 10), category: 'Buty' });
         setIsModalOpen(true);
       };
 
@@ -647,10 +657,18 @@
           pairsCount: Number(newDelivery.pairsCount) || 1,
           createdAt: new Date().toISOString(),
           purchaseDate: newDelivery.purchaseDate,
+          category: newDelivery.category || 'Buty',
           items: []
         }, ...deliveries]);
 
         setIsModalOpen(false);
+      };
+
+      const updateDeliveryCategory = (deliveryId, category) => {
+        const updatedDeliveries = deliveries.map(d =>
+          d.id === deliveryId ? { ...d, category } : d
+        );
+        setDeliveries(updatedDeliveries);
       };
 
       const deleteDelivery = (deliveryId) => {
@@ -875,6 +893,19 @@
                       className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-white placeholder-brand-border focus:ring-1 focus:ring-white focus:border-white outline-none transition-all cursor-pointer"
                     />
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-brand-muted mb-1.5">Kategoria boxa</label>
+                    <select
+                      value={newDelivery.category}
+                      onChange={e => setNewDelivery({ ...newDelivery, category: e.target.value })}
+                      className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-white placeholder-brand-border focus:ring-1 focus:ring-white focus:border-white outline-none transition-all cursor-pointer"
+                    >
+                      <option value="Buty">Buty</option>
+                      <option value="Ubrania">Ubrania</option>
+                      <option value="Akcesoria">Akcesoria</option>
+                      <option value="Inne">Inne</option>
+                    </select>
+                  </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-brand-muted mb-1.5">Kwota za karton (PLN)</label>
@@ -951,6 +982,19 @@
                   {availableMonths.map(m => (
                     <option key={m.value} value={m.value}>{m.label}</option>
                   ))}
+                </select>
+
+                {/* Global Category Filter */}
+                <select
+                  value={globalCategoryFilter}
+                  onChange={(e) => setGlobalCategoryFilter(e.target.value)}
+                  className="bg-brand-bg border border-brand-border text-white text-sm rounded-lg py-1.5 pl-3 pr-8 focus:ring-1 focus:ring-brand-border outline-none transition-colors cursor-pointer font-medium"
+                >
+                  <option value="All">Wszystkie kategorie</option>
+                  <option value="Buty">Buty</option>
+                  <option value="Ubrania">Ubrania</option>
+                  <option value="Akcesoria">Akcesoria</option>
+                  <option value="Inne">Inne</option>
                 </select>
 
                 {/* Sync Status Badge */}
@@ -1268,6 +1312,16 @@
                                 <span className="text-xs bg-brand-hover border border-brand-border text-brand-muted px-2 py-0.5 rounded-full">
                                   {filteredItems.length} par {hasActiveFilters && '(filtrowane)'}
                                 </span>
+                                <select
+                                  value={delivery.category || 'Buty'}
+                                  onChange={(e) => updateDeliveryCategory(delivery.id, e.target.value)}
+                                  className="text-xs bg-brand-bg border border-brand-border text-brand-muted px-2 py-0.5 rounded-full outline-none hover:text-white focus:text-white transition-colors cursor-pointer appearance-none"
+                                >
+                                  <option value="Buty">Buty</option>
+                                  <option value="Ubrania">Ubrania</option>
+                                  <option value="Akcesoria">Akcesoria</option>
+                                  <option value="Inne">Inne</option>
+                                </select>
                               </div>
                               <div className="flex flex-wrap gap-x-5 gap-y-1 mt-1.5 text-sm">
                                 <span className="text-brand-muted">Koszt boxa: <span className="font-medium text-white">{formatCurrency(delivery.boxCost)}</span></span>
