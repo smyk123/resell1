@@ -58,6 +58,14 @@
     }
 
     /* Hide scrollbar */
+    @keyframes appEnter {
+      from { opacity: 0; transform: translateY(15px); filter: blur(5px); }
+      to { opacity: 1; transform: translateY(0); filter: blur(0); }
+    }
+    .animate-app-enter {
+      animation: appEnter 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    }
+
     .no-scrollbar::-webkit-scrollbar {
       display: none;
     }
@@ -891,7 +899,7 @@
       if (!unlocked) return <PinLock onUnlock={handleUnlock} />;
 
       return (
-        <div className="min-h-screen pb-24 font-sans selection:bg-white/20">
+        <div className="min-h-screen pb-24 font-sans selection:bg-white/20 animate-app-enter">
 
           {/* Add Delivery Modal */}
           {isModalOpen && (
@@ -1179,15 +1187,15 @@
 
                 {/* Metric Card 1 */}
                 <div className="bg-brand-card rounded-xl p-6 border border-brand-border flex flex-col justify-between relative overflow-hidden group">
-                  <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  <div className="absolute inset-0 bg-gradient-to-br from-sky-500/[0.05] to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
                   <div className="text-sm font-medium text-brand-muted mb-2 flex justify-between items-center relative z-10">
                     Łączny przychód
                     <div className="w-8 h-8 bg-brand-bg rounded-lg border border-brand-border flex items-center justify-center">
-                      <i data-lucide="wallet" className="w-4 h-4 text-white"></i>
+                      <i data-lucide="wallet" className="w-4 h-4 text-sky-400"></i>
                     </div>
                   </div>
-                  <div className="text-3xl font-semibold tracking-tight text-white mt-2 relative z-10">
-                    {formatCurrency(metrics.totalRevenue)}
+                  <div className="text-3xl font-semibold tracking-tight text-sky-400 mt-2 relative z-10">
+                      {formatCurrency(metrics.totalRevenue)}
                   </div>
                 </div>
 
@@ -1207,15 +1215,15 @@
 
                 {/* Metric Card 4 */}
                 <div className="bg-brand-card rounded-xl p-6 border border-brand-border flex flex-col justify-between relative overflow-hidden group">
-                  <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  <div className="absolute inset-0 bg-gradient-to-br from-pink-500/[0.05] to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
                   <div className="text-sm font-medium text-brand-muted mb-2 flex justify-between items-center relative z-10">
                     Liczba sprzedanych par
                     <div className="w-8 h-8 bg-brand-bg rounded-lg border border-brand-border flex items-center justify-center">
-                      <i data-lucide="shopping-bag" className="w-4 h-4 text-white"></i>
+                      <i data-lucide="shopping-bag" className="w-4 h-4 text-pink-400"></i>
                     </div>
                   </div>
-                  <div className="text-3xl font-semibold tracking-tight text-white mt-2 relative z-10">
-                    {metrics.itemsSold}
+                  <div className="text-3xl font-semibold tracking-tight text-pink-400 mt-2 relative z-10">
+                      {metrics.itemsSold}
                   </div>
                 </div>
 
@@ -1228,8 +1236,8 @@
                       <i data-lucide="package" className="w-4 h-4 text-blue-400"></i>
                     </div>
                   </div>
-                  <div className="text-3xl font-semibold tracking-tight text-white mt-2 relative z-10">
-                    {formatCurrency(metrics.totalBoxCost)}
+                  <div className="text-3xl font-semibold tracking-tight text-blue-400 mt-2 relative z-10">
+                      {formatCurrency(metrics.totalBoxCost)}
                   </div>
                 </div>
               </div>
