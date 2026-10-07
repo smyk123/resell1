@@ -1040,6 +1040,18 @@
                   <option value="Inne">Inne</option>
                 </select>
 
+                {/* Global Box Sorting */}
+                <select
+                  value={globalBoxSort}
+                  onChange={(e) => setGlobalBoxSort(e.target.value)}
+                  className="bg-brand-bg border border-brand-border text-white text-sm rounded-lg py-1.5 pl-3 pr-8 focus:ring-1 focus:ring-brand-border outline-none transition-colors cursor-pointer font-medium"
+                >
+                  <option value="desc">Sortuj: Najnowsze</option>
+                  <option value="asc">Sortuj: Najstarsze</option>
+                  <option value="alpha">Sortuj: A-Z</option>
+                  <option value="alpha-desc">Sortuj: Z-A</option>
+                </select>
+
                 {/* Sync Status Badge */}
                 {syncStatus === 'loading' && (
                   <span className="hidden md:flex text-xs font-medium text-brand-muted bg-brand-card border border-brand-border px-2 py-0.5 rounded-full items-center gap-1 sync-pulse">
@@ -1239,27 +1251,7 @@
                     </h2>
                   </div>
                   <div className="flex items-center gap-3 w-full sm:w-auto">
-                    <button
-                      onClick={() => {
-                        const nextSort = {
-                          'desc': 'asc',
-                          'asc': 'alpha',
-                          'alpha': 'alpha-desc',
-                          'alpha-desc': 'desc'
-                        }[globalBoxSort] || 'desc';
-                        setGlobalBoxSort(nextSort);
-                      }}
-                      className="bg-brand-bg border border-brand-border text-brand-muted hover:text-white hover:bg-brand-hover px-3 py-2 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 active:scale-95 flex-1 sm:flex-none"
-                      title="Zmień sortowanie"
-                    >
-                      <span className="text-xs uppercase tracking-wider">Sortuj:</span>
-                      <span className="text-white flex items-center gap-1.5">
-                        {globalBoxSort === 'desc' && <><i data-lucide="arrow-down" className="w-3.5 h-3.5"></i> Najnowsze</>}
-                        {globalBoxSort === 'asc' && <><i data-lucide="arrow-up" className="w-3.5 h-3.5"></i> Najstarsze</>}
-                        {globalBoxSort === 'alpha' && <><i data-lucide="arrow-down" className="w-3.5 h-3.5"></i> A-Z</>}
-                        {globalBoxSort === 'alpha-desc' && <><i data-lucide="arrow-up" className="w-3.5 h-3.5"></i> Z-A</>}
-                      </span>
-                    </button>
+                    
                     <button
                       onClick={openAddDeliveryModal}
                       className="bg-white text-black hover:bg-gray-200 active:scale-95 px-4 py-2 rounded-lg font-medium text-sm transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(255,255,255,0.1)] flex-1 sm:flex-none justify-center"
@@ -1286,6 +1278,7 @@
                 <div className="space-y-8">
                   {sortedDeliveries.map(delivery => {
                     const unitCost = Number(delivery.pairsCount) > 0 ? (Number(delivery.boxCost) || 0) / Number(delivery.pairsCount) : 0;
+                    const isNotShoes = delivery.category && delivery.category !== 'Buty';
 
                     // Setup filters for this delivery
                     const f = filters[delivery.id] || { status: 'All', minPrice: '', dateFrom: '', dateTo: '', sort: 'none' };
@@ -1521,9 +1514,9 @@
                               <tr>
                                 <th className="px-6 py-3.5 min-w-[220px]">Produkt</th>
                                 <th className="px-6 py-3.5 w-24">Rozmiar</th>
-                                <th className="px-6 py-3.5 w-24">Wkładka</th>
+                                {!isNotShoes && <th className="px-6 py-3.5 w-24">Wkładka</th>}
                                 <th className="px-6 py-3.5 w-40">Stan</th>
-                                <th className="px-6 py-3.5 w-36">Cena kat.</th>
+                                {!isNotShoes && <th className="px-6 py-3.5 w-36">Cena kat.</th>}
                                 <th className="px-6 py-3.5 w-36">Cena Sprzedaży</th>
                                 <th className="px-6 py-3.5 w-44">Data Sprzedaży</th>
                                 <th className="px-6 py-3.5 w-36">Status</th>
@@ -1554,7 +1547,7 @@
                                         type="text"
                                         value={item.name}
                                         onChange={(e) => updateItem(delivery.id, item.id, 'name', e.target.value)}
-                                        placeholder="Model buta..."
+                                        placeholder="Nazwa..."
                                         className="w-full bg-transparent border-none focus:ring-0 p-0 text-white placeholder-brand-muted/50 font-medium text-sm outline-none pl-1"
                                       />
                                     </td>
@@ -1567,15 +1560,9 @@
                                         className="w-full bg-transparent border-none focus:ring-0 p-0 text-white placeholder-brand-muted/50 text-sm outline-none"
                                       />
                                     </td>
-                                    <td className="px-6 py-2.5">
-                                      <input
-                                        type="number"
-                                        value={item.insertLength || ''}
-                                        onChange={(e) => updateItem(delivery.id, item.id, 'insertLength', e.target.value)}
-                                        placeholder="cm"
-                                        className="w-full bg-transparent border-none focus:ring-0 p-0 text-white placeholder-brand-muted/50 text-sm outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                      />
-                                    </td>
+                                    {!isNotShoes && (<td className="px-6 py-2.5">
+                                      <input type="number" value={item.insertLength || ''}</td>
+                                    )}
                                     <td className="px-6 py-2.5">
                                       <select
                                         value={item.condition}
@@ -1590,15 +1577,9 @@
                                         <option value="Uszkodzone">Uszkodzone</option>
                                       </select>
                                     </td>
-                                    <td className="px-6 py-2.5 relative">
-                                      <input
-                                        type="number"
-                                        value={item.catalogPrice}
-                                        onChange={(e) => updateItem(delivery.id, item.id, 'catalogPrice', e.target.value)}
-                                        className="w-full bg-transparent border-none focus:ring-0 p-0 text-white placeholder-brand-muted/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none text-sm outline-none"
-                                        placeholder="0"
-                                      />
-                                    </td>
+                                    {!isNotShoes && (<td className="px-6 py-2.5 relative">
+                                      <input type="number" value={item.catalogPrice}</td>
+                                    )}
                                     <td className="px-6 py-2.5 relative">
                                       <input
                                         type="number"
