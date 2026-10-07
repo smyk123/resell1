@@ -276,7 +276,7 @@
                 {/* Center Text */}
                 <div className="z-10 text-center fade-in">
                   <h1 className="text-white text-xl md:text-2xl font-bold uppercase tracking-[0.3em]" style={{ fontFamily: 'monospace', textShadow: '0 0 10px rgba(255,255,255,0.8)' }}>
-                    Access<br/>Granted
+                    Hello<br/>Smyk
                   </h1>
                 </div>
               </div>
@@ -285,29 +285,31 @@
           {/* Subtle grid background */}
           <div style={{
             position:'absolute', inset:0,
-            backgroundImage:'radial-gradient(circle at 50% 0%, rgba(0,230,118,0.06) 0%, transparent 70%)',
+            backgroundImage:'radial-gradient(circle at 50% 0%, rgba(0,229,255,0.08) 0%, transparent 70%)',
             pointerEvents:'none'
           }}/>
 
           <div className="fade-in flex flex-col items-center gap-8 relative z-10">
             {/* Logo */}
             <div className="flex flex-col items-center gap-3">
-              <div className="w-16 h-16 bg-brand-card border border-brand-border rounded-2xl flex items-center justify-center shadow-2xl" style={{boxShadow:'0 0 40px rgba(0,230,118,0.12)'}}>
-                <i data-lucide="package" style={{width:28,height:28,color:'#00E676'}}></i>
-              </div>
-              <h1 className="text-xl font-semibold text-white tracking-tight">ResellTracker</h1>
-              <p className="text-brand-muted text-sm">Wprowadź PIN, aby kontynuować</p>
+              <div className="relative w-20 h-20 bg-black/40 border border-[#00e5ff]/30 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(0,229,255,0.15)] overflow-hidden group">
+                  <div className="absolute inset-0 border border-[#00e5ff]/50 rounded-full animate-[spin_10s_linear_infinite]" style={{ borderStyle: 'dashed' }}></div>
+                  <div className="absolute inset-2 border border-[#00e5ff]/30 rounded-full animate-[spin_15s_linear_infinite_reverse]"></div>
+                  <i data-lucide="shield" className="w-7 h-7 text-[#00e5ff] relative z-10 drop-shadow-[0_0_8px_rgba(0,229,255,0.8)]"></i>
+                </div>
+              <h1 className="text-xl font-bold text-white tracking-[0.2em] uppercase font-mono">SYSTEM_LOGIN</h1>
+              <p className="text-[#00e5ff]/70 text-xs tracking-widest font-mono uppercase">Awaiting authorization...</p>
             </div>
 
             {/* PIN dots */}
-            <div className={`flex gap-4 ${shake ? 'pin-shake' : ''}`}>
-              {Array.from({length: PIN_LENGTH}).map((_, i) => (
-                <div
-                  key={i}
-                  className={`w-4 h-4 rounded-full border-2 transition-all duration-150 ${i < digits.length ? 'bg-[#00E676] border-[#00E676] pin-dot-filled' : 'bg-transparent border-brand-border'}`}
-                />
-              ))}
-            </div>
+            <div className={`flex gap-3 ${shake ? 'pin-shake' : ''}`}>
+                {Array.from({length: PIN_LENGTH}).map((_, i) => (
+                  <div
+                    key={i}
+                    className={`w-8 h-1.5 transition-all duration-300 ${i < digits.length ? 'bg-[#00e5ff] shadow-[0_0_12px_rgba(0,229,255,0.9)]' : 'bg-white/10'}`}
+                  />
+                ))}
+              </div>
 
             {error && <p className="text-red-400 text-xs font-medium -mt-4">{error}</p>}
 
@@ -319,11 +321,12 @@
                   <button
                     key={k}
                     onClick={() => k === '⌫' ? handleBackspace() : handleDigit(k)}
-                    className="h-16 rounded-xl bg-brand-card border border-brand-border text-white font-semibold text-xl hover:bg-brand-hover hover:border-brand-muted active:scale-95 transition-all duration-100 flex items-center justify-center select-none"
-                    style={k === '⌫' ? {color:'#a3a3a3', fontSize:'18px'} : {}}
+                    className="h-14 bg-black/30 border border-white/10 text-white font-mono text-xl hover:bg-[#00e5ff]/10 hover:border-[#00e5ff]/50 hover:text-[#00e5ff] hover:shadow-[inset_0_0_15px_rgba(0,229,255,0.3)] active:bg-[#00e5ff]/30 active:scale-95 transition-all duration-200 flex items-center justify-center select-none relative overflow-hidden group"
+                    style={k === '⌫' ? {color:'#00e5ff', fontSize:'18px', opacity: 0.7} : {}}
                   >
-                    {k}
-                  </button>
+                    <div className="absolute top-0 left-0 w-1.5 h-1.5 border-t border-l border-[#00e5ff]/0 group-hover:border-[#00e5ff]/70 transition-colors"></div><div className="absolute bottom-0 right-0 w-1.5 h-1.5 border-b border-r border-[#00e5ff]/0 group-hover:border-[#00e5ff]/70 transition-colors"></div>
+                      {k}
+                    </button>
                 );
               })}
             </div>
