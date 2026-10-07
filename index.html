@@ -28,12 +28,12 @@
           },
           colors: {
             brand: {
-              bg: '#0a0a0a',
-              card: '#171717',
-              border: '#262626',
-              text: '#ffffff',
-              muted: '#a3a3a3',
-              hover: '#1f1f1f'
+              bg: '#000000',
+              card: '#0a0a0a',
+              border: '#1f1f1f',
+              text: '#f5f5f5',
+              muted: '#888888',
+              hover: '#141414'
             }
           }
         }
@@ -113,6 +113,35 @@
       50% { opacity: 0.45; }
     }
     .sync-pulse { animation: syncPulse 1.2s ease-in-out infinite; }
+    
+    /* Jarvis Animation */
+    @keyframes jarvisScan {
+      0% { transform: translateY(-100vh); opacity: 0; }
+      10% { opacity: 0.5; }
+      50% { opacity: 0.8; }
+      90% { opacity: 0.5; }
+      100% { transform: translateY(100vh); opacity: 0; }
+    }
+    .jarvis-scanline {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 15px;
+      background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.8), transparent);
+      box-shadow: 0 0 20px rgba(255,255,255,0.5);
+      animation: jarvisScan 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      z-index: 50;
+    }
+    @keyframes jarvisTextGlitch {
+      0% { opacity: 0; letter-spacing: -10px; filter: blur(10px); }
+      20% { opacity: 1; letter-spacing: 15px; filter: blur(0px); text-shadow: 0 0 30px rgba(255,255,255,0.8); }
+      80% { opacity: 1; letter-spacing: 20px; filter: blur(0px); text-shadow: 0 0 40px rgba(255,255,255,1); }
+      100% { opacity: 0; letter-spacing: 40px; filter: blur(10px); }
+    }
+    .jarvis-text {
+      animation: jarvisTextGlitch 2.2s cubic-bezier(0.1, 0.8, 0.1, 1) forwards;
+    }
   </style>
 </head>
 
@@ -212,16 +241,18 @@
       const [digits, setDigits]     = useState([]);
       const [shake, setShake]       = useState(false);
       const [error, setError]       = useState('');
+      const [granted, setGranted]   = useState(false);
       const PIN_LENGTH = APP_PIN.length;
 
       const handleDigit = useCallback((d) => {
-        if (digits.length >= PIN_LENGTH) return;
+        if (digits.length >= PIN_LENGTH || granted) return;
         const next = [...digits, d];
         setDigits(next);
         if (next.length === PIN_LENGTH) {
           setTimeout(() => {
             if (next.join('') === APP_PIN) {
-              onUnlock();
+              setGranted(true);
+              setTimeout(() => onUnlock(), 2200);
             } else {
               setShake(true);
               setError('Nieprawidłowy PIN');
@@ -229,7 +260,7 @@
             }
           }, 120);
         }
-      }, [digits]);
+      }, [digits, granted]);
 
       const handleBackspace = useCallback(() => {
         setDigits(d => d.slice(0, -1));
@@ -247,18 +278,26 @@
 
       return (
         <div className="fixed inset-0 flex flex-col items-center justify-center bg-brand-bg" style={{zIndex:9999}}>
+          {granted && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black overflow-hidden">
+              <div className="jarvis-scanline"></div>
+              <h1 className="jarvis-text text-white text-4xl sm:text-6xl md:text-7xl font-bold uppercase tracking-widest text-center" style={{ fontFamily: 'monospace' }}>
+                Access<br/>Granted
+              </h1>
+            </div>
+          )}
           {/* Subtle grid background */}
           <div style={{
             position:'absolute', inset:0,
-            backgroundImage:'radial-gradient(circle at 50% 0%, rgba(0,230,118,0.06) 0%, transparent 70%)',
+            backgroundImage:'radial-gradient(circle at 50% 0%, rgba(255,255,255,0.06) 0%, transparent 70%)',
             pointerEvents:'none'
           }}/>
 
           <div className="fade-in flex flex-col items-center gap-8 relative z-10">
             {/* Logo */}
             <div className="flex flex-col items-center gap-3">
-              <div className="w-16 h-16 bg-brand-card border border-brand-border rounded-2xl flex items-center justify-center shadow-2xl" style={{boxShadow:'0 0 40px rgba(0,230,118,0.12)'}}>
-                <i data-lucide="package" style={{width:28,height:28,color:'#00E676'}}></i>
+              <div className="w-16 h-16 bg-brand-card border border-brand-border rounded-2xl flex items-center justify-center shadow-2xl" style={{boxShadow:'0 0 40px rgba(255,255,255,0.12)'}}>
+                <i data-lucide="package" style={{width:28,height:28,color:'#ffffff'}}></i>
               </div>
               <h1 className="text-xl font-semibold text-white tracking-tight">ResellTracker</h1>
               <p className="text-brand-muted text-sm">Wprowadź PIN, aby kontynuować</p>
@@ -269,7 +308,7 @@
               {Array.from({length: PIN_LENGTH}).map((_, i) => (
                 <div
                   key={i}
-                  className={`w-4 h-4 rounded-full border-2 transition-all duration-150 ${i < digits.length ? 'bg-[#00E676] border-[#00E676] pin-dot-filled' : 'bg-transparent border-brand-border'}`}
+                  className={`w-4 h-4 rounded-full border-2 transition-all duration-150 ${i < digits.length ? 'bg-[#ffffff] border-[#ffffff] pin-dot-filled' : 'bg-transparent border-brand-border'}`}
                 />
               ))}
             </div>
@@ -831,13 +870,13 @@
         switch (cond) {
           case 'Nowe z metką':
           case 'Nowe bez metki':
-            return 'text-[#00e676] bg-[#004d00]/30 border-[#00e676]/30';
+            return 'text-[#ffffff] bg-[#333333]/30 border-[#ffffff]/30';
           case 'Bardzo dobry':
-            return 'text-[#d500f9] bg-[#31004a]/30 border-[#d500f9]/30'
+            return 'text-[#ffffff] bg-[#333333]/30 border-[#ffffff]/30'
           case 'Dobry':
-            return 'text-blue-400 bg-blue-500/20 border-blue-500/30';
+            return 'text-gray-300 bg-gray-400/20 border-gray-400/30';
           case 'Zadowalający':
-            return 'text-amber-500 bg-amber-700/20 border-amber-700/30';
+            return 'text-gray-400 bg-gray-600/20 border-gray-600/30';
           case 'Uszkodzone':
             return 'text-red-400 bg-red-500/20 border-red-500/30';
           default:
@@ -847,10 +886,10 @@
 
       const getStatusClasses = (status) => {
         switch (status) {
-          case 'In stock': return 'text-blue-400 bg-blue-400/10 border-blue-400/20';
-          case 'Posted': return 'text-purple-400 bg-purple-400/10 border-purple-400/20';
-          case 'Shipped': return 'text-amber-400 bg-amber-400/10 border-amber-400/20';
-          case 'Sold': return 'text-[#00E676] bg-[#00E676]/10 border-[#00E676]/20';
+          case 'In stock': return 'text-gray-300 bg-gray-300/10 border-gray-300/20';
+          case 'Posted': return 'text-gray-300 bg-gray-300/10 border-gray-300/20';
+          case 'Shipped': return 'text-gray-300 bg-gray-300/10 border-gray-300/20';
+          case 'Sold': return 'text-[#ffffff] bg-[#ffffff]/10 border-[#ffffff]/20';
           default: return 'text-white bg-transparent border-brand-border';
         }
       };
@@ -1005,13 +1044,13 @@
                   </span>
                 )}
                 {syncStatus === 'syncing' && (
-                  <span className="hidden md:flex text-xs font-medium text-amber-400 bg-amber-400/10 border border-amber-400/20 px-2 py-0.5 rounded-full items-center gap-1 sync-pulse">
+                  <span className="hidden md:flex text-xs font-medium text-gray-300 bg-gray-300/10 border border-gray-300/20 px-2 py-0.5 rounded-full items-center gap-1 sync-pulse">
                     <i data-lucide="refresh-cw" className="w-3 h-3"></i>
                     Synchronizacja...
                   </span>
                 )}
                 {syncStatus === 'synced' && (
-                  <span className="hidden md:flex text-xs font-medium text-[#00E676] bg-[#00E676]/10 border border-[#00E676]/20 px-2 py-0.5 rounded-full items-center gap-1">
+                  <span className="hidden md:flex text-xs font-medium text-[#ffffff] bg-[#ffffff]/10 border border-[#ffffff]/20 px-2 py-0.5 rounded-full items-center gap-1">
                     <i data-lucide="cloud" className="w-3 h-3"></i>
                     Zsynchronizowano
                   </span>
@@ -1073,7 +1112,7 @@
                   <div className="inline-block bg-brand-card border border-brand-border rounded-xl overflow-hidden shadow-lg">
                     <div className="px-4 py-3 border-b border-brand-border flex items-center gap-2">
                       <div className="w-6 h-6 bg-brand-bg rounded-md border border-brand-border flex items-center justify-center">
-                        <i data-lucide="bar-chart-2" className="w-3.5 h-3.5 text-[#00E676]"></i>
+                        <i data-lucide="bar-chart-2" className="w-3.5 h-3.5 text-[#ffffff]"></i>
                       </div>
                       <span className="text-sm font-semibold text-white tracking-tight">Przychód kwartalny</span>
                     </div>
@@ -1088,7 +1127,7 @@
                         {quarterlyRevenue.map(({ key, revenue }, idx) => (
                           <tr key={key} className={`${idx !== quarterlyRevenue.length - 1 ? 'border-b border-brand-border/50' : ''} hover:bg-brand-hover/40 transition-colors`}>
                             <td className="px-4 py-2.5 text-white font-medium whitespace-nowrap">{key}</td>
-                            <td className="px-4 py-2.5 text-right font-semibold text-[#00E676] whitespace-nowrap">{formatCurrency(revenue)}</td>
+                            <td className="px-4 py-2.5 text-right font-semibold text-[#ffffff] whitespace-nowrap">{formatCurrency(revenue)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1099,14 +1138,14 @@
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-5">
                 {/* Metric Card: In Stock */}
                 <div className="bg-brand-card rounded-xl p-6 border border-brand-border flex flex-col justify-between relative overflow-hidden group">
-                  <div className="absolute inset-0 bg-gradient-to-br from-purple-500/[0.05] to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  <div className="absolute inset-0 bg-gradient-to-br from-gray-400/[0.05] to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
                   <div className="text-sm font-medium text-brand-muted mb-2 flex justify-between items-center relative z-10">
                     Na stanie
                     <div className="w-8 h-8 bg-brand-bg rounded-lg border border-brand-border flex items-center justify-center">
-                      <i data-lucide="archive" className="w-4 h-4 text-purple-400"></i>
+                      <i data-lucide="archive" className="w-4 h-4 text-gray-300"></i>
                     </div>
                   </div>
-                  <div className="text-3xl font-semibold tracking-tight text-purple-400 mt-2 relative z-10">
+                  <div className="text-3xl font-semibold tracking-tight text-gray-300 mt-2 relative z-10">
                     {metrics.itemsInStock} <span className="text-base font-normal text-brand-muted">par</span>
                   </div>
                 </div>
@@ -1127,14 +1166,14 @@
 
                 {/* Metric Card 2 */}
                 <div className="bg-brand-card rounded-xl p-6 border border-brand-border flex flex-col justify-between relative overflow-hidden group">
-                  <div className="absolute inset-0 bg-gradient-to-br from-[#00E676]/[0.05] to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  <div className="absolute inset-0 bg-gradient-to-br from-[#ffffff]/[0.05] to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
                   <div className="text-sm font-medium text-brand-muted mb-2 flex justify-between items-center relative z-10">
                     Łączny zysk
                     <div className="w-8 h-8 bg-brand-bg rounded-lg border border-brand-border flex items-center justify-center">
-                      <i data-lucide="trending-up" className="w-4 h-4 text-[#00E676]"></i>
+                      <i data-lucide="trending-up" className="w-4 h-4 text-[#ffffff]"></i>
                     </div>
                   </div>
-                  <div className={`text-3xl font-semibold tracking-tight mt-2 relative z-10 ${metrics.totalProfit >= 0 ? 'text-[#00E676]' : 'text-red-500'}`}>
+                  <div className={`text-3xl font-semibold tracking-tight mt-2 relative z-10 ${metrics.totalProfit >= 0 ? 'text-[#ffffff]' : 'text-red-500'}`}>
                     {metrics.totalProfit > 0 ? '+' : ''}{formatCurrency(metrics.totalProfit)}
                   </div>
                 </div>
@@ -1155,11 +1194,11 @@
 
                 {/* Metric Card 5 */}
                 <div className="bg-brand-card rounded-xl p-6 border border-brand-border flex flex-col justify-between relative overflow-hidden group">
-                  <div className="absolute inset-0 bg-gradient-to-br from-blue-500/[0.05] to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  <div className="absolute inset-0 bg-gradient-to-br from-gray-400/[0.05] to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
                   <div className="text-sm font-medium text-brand-muted mb-2 flex justify-between items-center relative z-10">
                     {globalMonthFilter === 'All' ? 'Suma wydana na boxy' : 'Koszt sprzedanych par'}
                     <div className="w-8 h-8 bg-brand-bg rounded-lg border border-brand-border flex items-center justify-center">
-                      <i data-lucide="package" className="w-4 h-4 text-blue-400"></i>
+                      <i data-lucide="package" className="w-4 h-4 text-gray-300"></i>
                     </div>
                   </div>
                   <div className="text-3xl font-semibold tracking-tight text-white mt-2 relative z-10">
@@ -1327,7 +1366,7 @@
                                 <span className="text-brand-muted">Koszt boxa: <span className="font-medium text-white">{formatCurrency(delivery.boxCost)}</span></span>
                                 <span className="text-brand-muted">Koszt / parę: <span className="font-medium text-white">{formatCurrency(unitCost)}</span></span>
                                 <span className="text-brand-muted ml-1 border-l border-brand-border pl-4">Przychód: <span className="font-medium text-white">{formatCurrency(dRev)}</span></span>
-                                <span className="text-brand-muted">Zysk: <span className={`font-medium ${dProf >= 0 ? 'text-[#00E676]' : 'text-red-500'}`}>{dProf > 0 ? '+' : ''}{formatCurrency(dProf)}</span></span>
+                                <span className="text-brand-muted">Zysk: <span className={`font-medium ${dProf >= 0 ? 'text-[#ffffff]' : 'text-red-500'}`}>{dProf > 0 ? '+' : ''}{formatCurrency(dProf)}</span></span>
                               </div>
                             </div>
                           </div>
@@ -1337,11 +1376,11 @@
                             <div className="relative">
                               <button
                                 onClick={() => setActivePopoverDeliveryId(activePopoverDeliveryId === delivery.id ? null : delivery.id)}
-                                className={`bg-brand-bg border text-brand-muted hover:text-white hover:bg-brand-hover px-3 py-1.5 rounded-md font-medium text-sm transition-colors flex items-center gap-1.5 active:scale-95 ${hasActiveFilters ? 'border-blue-500/50 text-blue-400 bg-blue-500/5 shadow-[0_0_10px_rgba(59,130,246,0.1)]' : 'border-brand-border'}`}
+                                className={`bg-brand-bg border text-brand-muted hover:text-white hover:bg-brand-hover px-3 py-1.5 rounded-md font-medium text-sm transition-colors flex items-center gap-1.5 active:scale-95 ${hasActiveFilters ? 'border-gray-400/50 text-gray-300 bg-gray-400/5 shadow-[0_0_10px_rgba(59,130,246,0.1)]' : 'border-brand-border'}`}
                               >
                                 <i data-lucide="filter" className="w-4 h-4"></i>
                                 <span className="hidden lg:inline">Filtruj / Sortuj</span>
-                                {hasActiveFilters && <span className="w-2 h-2 rounded-full bg-blue-500 ml-1"></span>}
+                                {hasActiveFilters && <span className="w-2 h-2 rounded-full bg-gray-400 ml-1"></span>}
                               </button>
 
                               {activePopoverDeliveryId === delivery.id && (
@@ -1570,7 +1609,7 @@
                                     </td>
                                     <td className="px-6 py-2.5 text-right">
                                       {showProfit ? (
-                                        <span className={`font-medium ${profit >= 0 ? 'text-[#00E676]' : 'text-red-500'}`}>
+                                        <span className={`font-medium ${profit >= 0 ? 'text-[#ffffff]' : 'text-red-500'}`}>
                                           {profit > 0 ? '+' : ''}{formatCurrency(profit)}
                                         </span>
                                       ) : (
@@ -1678,7 +1717,7 @@
                                   </span>
                                 </td>
                                 <td className="px-6 py-3 text-right">
-                                  <span className={`font-medium ${profit >= 0 ? 'text-[#00E676]' : 'text-red-500'}`}>
+                                  <span className={`font-medium ${profit >= 0 ? 'text-[#ffffff]' : 'text-red-500'}`}>
                                     {profit > 0 ? '+' : ''}{formatCurrency(profit)}
                                   </span>
                                 </td>
