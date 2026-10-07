@@ -1560,8 +1560,16 @@
                                         className="w-full bg-transparent border-none focus:ring-0 p-0 text-white placeholder-brand-muted/50 text-sm outline-none"
                                       />
                                     </td>
-                                    {!isNotShoes && (<td className="px-6 py-2.5">
-                                      <input type="number" value={item.insertLength || ''}</td>
+                                    {!isNotShoes && (
+                                      <td className="px-6 py-2.5">
+                                        <input
+                                          type="number"
+                                          value={item.insertLength || ''}
+                                          onChange={(e) => updateItem(delivery.id, item.id, 'insertLength', e.target.value)}
+                                          placeholder="cm"
+                                          className="w-full bg-transparent border-none focus:ring-0 p-0 text-white placeholder-brand-muted/50 text-sm outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                        />
+                                      </td>
                                     )}
                                     <td className="px-6 py-2.5">
                                       <select
@@ -1577,8 +1585,16 @@
                                         <option value="Uszkodzone">Uszkodzone</option>
                                       </select>
                                     </td>
-                                    {!isNotShoes && (<td className="px-6 py-2.5 relative">
-                                      <input type="number" value={item.catalogPrice}</td>
+                                    {!isNotShoes && (
+                                      <td className="px-6 py-2.5 relative">
+                                        <input
+                                          type="number"
+                                          value={item.catalogPrice}
+                                          onChange={(e) => updateItem(delivery.id, item.id, 'catalogPrice', e.target.value)}
+                                          className="w-full bg-transparent border-none focus:ring-0 p-0 text-white placeholder-brand-muted/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none text-sm outline-none"
+                                          placeholder="0"
+                                        />
+                                      </td>
                                     )}
                                     <td className="px-6 py-2.5 relative">
                                       <input
