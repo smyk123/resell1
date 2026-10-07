@@ -380,11 +380,13 @@
       const fileInputRef  = useRef(null);
       const menuRef       = useRef(null);
       const popoversRef   = useRef(null);
+      const quarterlyRef  = useRef(null);
       const isSavingRef   = useRef(false); // prevent echo-writes from onSnapshot
       const dataLoadedRef = useRef(false);  // prevent overwriting localStorage before Firebase loads
 
       const [isModalOpen, setIsModalOpen]     = useState(false);
       const [isMenuOpen, setIsMenuOpen]       = useState(false);
+      const [isQuarterlyOpen, setIsQuarterlyOpen] = useState(false);
       const [activePopoverDeliveryId, setActivePopoverDeliveryId] = useState(null);
       const [newDelivery, setNewDelivery]     = useState({ name:'', boxCost:'', pairsCount:'', purchaseDate: new Date().toISOString().slice(0,10), category: 'Buty' });
       const [filters, setFilters]             = useState(() => {
@@ -504,6 +506,7 @@
         const handler = (e) => {
           if (menuRef.current && !menuRef.current.contains(e.target)) setIsMenuOpen(false);
           if (popoversRef.current && !popoversRef.current.contains(e.target)) setActivePopoverDeliveryId(null);
+          if (quarterlyRef.current && !quarterlyRef.current.contains(e.target)) setIsQuarterlyOpen(false);
         };
         document.addEventListener('mousedown', handler);
         return () => document.removeEventListener('mousedown', handler);
@@ -1064,8 +1067,51 @@
                 )}
               </div>
 
-              {/* Management Actions - Kebab Menu */}
-              <div className="relative flex items-center" ref={menuRef}>
+              {/* Management Actions */}
+              <div className="flex items-center gap-2">
+                <div className="relative" ref={quarterlyRef}>
+                  <button
+                    onClick={() => setIsQuarterlyOpen(!isQuarterlyOpen)}
+                    className="flex items-center gap-2 text-sm font-medium text-brand-muted hover:text-white bg-brand-bg border border-brand-border px-3 py-1.5 rounded-lg transition-colors hover:bg-brand-hover"
+                  >
+                    <i data-lucide="bar-chart-2" className="w-4 h-4"></i>
+                    <span className="hidden sm:inline">Przychody kwartalne</span>
+                  </button>
+                  
+                  {isQuarterlyOpen && quarterlyRevenue.length > 0 && (
+                    <div className="absolute right-0 mt-2 w-64 rounded-xl bg-brand-card border border-brand-border shadow-2xl overflow-hidden z-50">
+                      <div className="px-4 py-3 border-b border-brand-border flex items-center gap-2">
+                        <div className="w-6 h-6 bg-brand-bg rounded-md border border-brand-border flex items-center justify-center">
+                          <i data-lucide="bar-chart-2" className="w-3.5 h-3.5 text-[#00E676]"></i>
+                        </div>
+                        <span className="text-sm font-semibold text-white tracking-tight">Przychód kwartalny</span>
+                      </div>
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-brand-border">
+                            <th className="px-4 py-2 text-left text-xs font-medium text-brand-muted uppercase tracking-wider">Kwartał</th>
+                            <th className="px-4 py-2 text-right text-xs font-medium text-brand-muted uppercase tracking-wider">Przychód</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {quarterlyRevenue.map(({ key, revenue }, idx) => (
+                            <tr key={key} className={`${idx !== quarterlyRevenue.length - 1 ? 'border-b border-brand-border/50' : ''} hover:bg-brand-hover/40 transition-colors`}>
+                              <td className="px-4 py-2.5 text-white font-medium whitespace-nowrap">{key}</td>
+                              <td className="px-4 py-2.5 text-right font-semibold text-[#00E676] whitespace-nowrap">{formatCurrency(revenue)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  {isQuarterlyOpen && quarterlyRevenue.length === 0 && (
+                    <div className="absolute right-0 mt-2 w-64 rounded-xl bg-brand-card border border-brand-border shadow-2xl overflow-hidden z-50 p-4 text-center text-sm text-brand-muted">
+                      Brak danych o przychodach
+                    </div>
+                  )}
+                </div>
+
+                <div className="relative flex items-center" ref={menuRef}>
 
                 <button
                   onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -1100,6 +1146,7 @@
                   </div>
                 )}
               </div>
+              </div>
             </div>
           </header>
           </div>
@@ -1108,35 +1155,7 @@
 
             {/* Global Dashboard */}
             <section>
-              {/* Quarterly Revenue Table */}
-              {quarterlyRevenue.length > 0 && (
-                <div className="mb-6">
-                  <div className="inline-block bg-brand-card border border-brand-border rounded-xl overflow-hidden shadow-lg">
-                    <div className="px-4 py-3 border-b border-brand-border flex items-center gap-2">
-                      <div className="w-6 h-6 bg-brand-bg rounded-md border border-brand-border flex items-center justify-center">
-                        <i data-lucide="bar-chart-2" className="w-3.5 h-3.5 text-[#00E676]"></i>
-                      </div>
-                      <span className="text-sm font-semibold text-white tracking-tight">Przychód kwartalny</span>
-                    </div>
-                    <table className="text-sm">
-                      <thead>
-                        <tr className="border-b border-brand-border">
-                          <th className="px-4 py-2 text-left text-xs font-medium text-brand-muted uppercase tracking-wider">Kwartał</th>
-                          <th className="px-4 py-2 text-right text-xs font-medium text-brand-muted uppercase tracking-wider">Przychód</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {quarterlyRevenue.map(({ key, revenue }, idx) => (
-                          <tr key={key} className={`${idx !== quarterlyRevenue.length - 1 ? 'border-b border-brand-border/50' : ''} hover:bg-brand-hover/40 transition-colors`}>
-                            <td className="px-4 py-2.5 text-white font-medium whitespace-nowrap">{key}</td>
-                            <td className="px-4 py-2.5 text-right font-semibold text-[#00E676] whitespace-nowrap">{formatCurrency(revenue)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-5">
                 {/* Metric Card: In Stock */}
                 <div className="bg-brand-card rounded-xl p-6 border border-brand-border flex flex-col justify-between relative overflow-hidden group">
